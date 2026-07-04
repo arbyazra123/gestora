@@ -1,0 +1,33 @@
+{
+  "id": "tennis",
+  "name": "Motion Table Tennis",
+  "version": "1.0.0",
+  "description": "Play table tennis against a bot opponent using hand tracking. Control your paddle with natural hand movements.",
+  "author": "Motion Platform",
+  "thumbnail": "/games/tennis/thumb.jpg",
+  "remoteEntry": "http://localhost:5002/assets/remoteEntry.js",
+  "production": "https://cdn.yourdomain.com/games/tennis/remoteEntry.js",
+  "handTracking": {
+    "mode": "single",
+    "minHands": 1,
+    "maxHands": 1,
+    "modelComplexity": 0
+  },
+  "multiplayer": {
+    "supported": false,
+    "maxPlayers": 1,
+    "modes": []
+  },
+  "tags": ["sports", "table-tennis", "action", "hand-tracking", "bot"],
+  "players": "1",
+  "requirements": {
+    "camera": true,
+    "webgl": true,
+    "webaudio": true
+  },
+  "performance": {
+    "targetFPS": 60,
+    "minFPS": 30,
+    "bundleSize": "~180KB"
+  }
+}

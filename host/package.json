@@ -1,0 +1,19 @@
+{
+  "name": "@motion-platform/host",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5151",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.185.0",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@originjs/vite-plugin-federation": "^1.3.5",
+    "vite": "^8.1.0",
+    "vite-plugin-compression": "^0.5.1"
+  }
+}

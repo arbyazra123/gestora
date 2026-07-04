@@ -1,0 +1,30 @@
+{
+  "id": "pong",
+  "name": "Motion Pong",
+  "version": "1.0.0",
+  "description": "Classic pong against a bot. Move your head to control your paddle, and hold up finger-count gestures with your hand to trigger special abilities.",
+  "author": "Motion Platform",
+  "thumbnail": "/games/pong/thumb.jpg",
+  "remoteEntry": "http://localhost:5003/assets/remoteEntry.js",
+  "production": "https://cdn.yourdomain.com/games/pong/remoteEntry.js",
+  "tracking": {
+    "type": "tasksVision"
+  },
+  "multiplayer": {
+    "supported": false,
+    "maxPlayers": 1,
+    "modes": []
+  },
+  "tags": ["arcade", "pong", "bot", "head-tracking", "hand-tracking"],
+  "players": "1",
+  "requirements": {
+    "camera": true,
+    "webgl": true,
+    "webaudio": true
+  },
+  "performance": {
+    "targetFPS": 60,
+    "minFPS": 30,
+    "bundleSize": "~150KB"
+  }
+}

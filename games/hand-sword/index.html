@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hand-Tracking Sword Demo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <video id="input_video" autoplay playsinline></video>
+  <canvas id="output_canvas"></canvas>
+  <canvas id="health-meter"></canvas>
+  <div id="three-container"></div>
+  <div id="score-panel">
+    <h1>SCORE: <span id="score">0</span></h1>
+    <h2 id="combo-display" class="hidden">COMBO: <span id="combo">0</span>x</h2>
+  </div>
+  <div id="debug-panel">
+    <p>Status: <span id="status">init...</span></p>
+    <button id="flip-toggle">Flip: ON (Mirrored)</button>
+    <div id="bpm-control">
+      <label for="bpm-slider">BPM: <span id="bpm-value">120</span></label>
+      <input type="range" id="bpm-slider" min="60" max="180" value="120" step="5">
+    </div>
+    <div id="hand-mode-control">
+      <label>Hand mode:</label>
+      <button id="one-hand-btn" class="control-btn">1</button>
+      <button id="two-hand-btn" class="control-btn">2</button>
+    </div>
+    <div id="difficulty-control">
+      <label>Difficulty:</label>
+      <button id="easy-btn" class="control-btn">EASY</button>
+      <button id="medium-btn" class="control-btn">MEDIUM</button>
+      <button id="hard-btn" class="control-btn">HARD</button>
+    </div>
+    <div id="theme-control">
+      <label for="theme-select">Song theme: <span id="theme-name"></span></label>
+      <select id="theme-select">
+        <option value="dnb">Drum & Bass</option>
+        <option value="synthwave">Synthwave</option>
+        <option value="cyberpunk">Cyberpunk</option>
+        <option value="chillwave">Chillwave</option>
+      </select>
+    </div>
+    <div id="playback-controls">
+      <button id="play-btn" class="control-btn">▶ PLAY</button>
+      <button id="pause-btn" class="control-btn hidden">⏸ PAUSE</button>
+      <button id="reset-btn" class="control-btn">↻ RESET</button>
+    </div>
+  </div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
