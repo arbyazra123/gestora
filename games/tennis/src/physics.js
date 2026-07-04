@@ -22,6 +22,8 @@ const GESTURE_LIFT_SCALE = 1; // extra upward velocity per world-unit of swing r
 const CENTER_HIT_LIFT_BONUS = 0.25; // guaranteed extra lift for the 2-finger center/lob swing
 const NET_CLEARANCE = 0.4; // buffer above the net's top so a hit doesn't just barely clip it
 const MIN_NET_CLEAR_DISTANCE = 0.5; // skip the clearance solve for hits already essentially at the net
+const SMASH_LAND_DEPTH = 2.2; // world units past the net a smash should land at (court half-length is ~3.57, see scene.js COURT_LENGTH/COURT_SCALE)
+const SMASH_BASE_POWER = 14; // vs. a normal hit's 9 — a smash is meaningfully harder to return
 
 // Ball state
 export const ballState = {
@@ -236,7 +238,7 @@ function checkBounds(courtBounds) {
   }
 }
 
-export function hitBall(racketPosition, racketVelocity, hitBy = 'player', gesture = null) {
+export function hitBall(racketPosition, racketVelocity, hitBy = 'player', gesture = null, smash = null) {
   // Calculate hit direction and power.
   // racketVelocity can be near zero (slow/still racket right at contact) — normalize()
   // silently collapses that to (0,0,0) instead of throwing, so the ball loses all
@@ -247,39 +249,74 @@ export function hitBall(racketPosition, racketVelocity, hitBy = 'player', gestur
   // A gesture swing (1/2/3 fingers) picks the direction explicitly instead of
   // relying on noisy tracked racket velocity, and its low-to-high rise sets
   // how high the ball is lifted. Center (2 fingers) is a dedicated bottom-to-up
-  // lift swing, so it gets a steeper launch angle on top of that.
+  // lift swing, so it gets a steeper launch angle on top of that. A smash
+  // (open hand) overrides all of that with a hard, flat, straight-ahead
+  // power shot instead — real smashes trade arc for speed.
   const isCenterSwing = gesture?.direction === 'center';
-  const launchY = isCenterSwing ? 0.35 : 0.3;
-  const hitDirection = gesture
-    ? new THREE.Vector3(SWING_DIRECTION_X[gesture.direction] ?? 0, launchY, forwardZ).normalize()
-    : racketVelocity.length() > 0.01
-      ? racketVelocity.clone().normalize()
-      : new THREE.Vector3(0, 0.3, forwardZ).normalize();
-  const hitPower = 9;
+  const launchY = smash ? 0.1 : isCenterSwing ? 0.35 : 0.3;
+  const hitDirection = smash
+    ? new THREE.Vector3(0, launchY, forwardZ).normalize()
+    : gesture
+      ? new THREE.Vector3(SWING_DIRECTION_X[gesture.direction] ?? 0, launchY, forwardZ).normalize()
+      : racketVelocity.length() > 0.01
+        ? racketVelocity.clone().normalize()
+        : new THREE.Vector3(0, 0.3, forwardZ).normalize();
+  const hitPower = smash ? SMASH_BASE_POWER : 9;
 
   // Set new velocity based on hit
   ballState.velocity.copy(hitDirection.multiplyScalar(hitPower));
 
-  // Add some upward force; a gesture swing's rise adds extra lift on top,
-  // and a center swing always gets a lift bonus even without much hand rise —
-  // that's what makes it read as "the lob shot" rather than just another direction.
-  const centerLiftBonus = isCenterSwing ? CENTER_HIT_LIFT_BONUS : 0;
-  const minLift = gesture ? BASE_LIFT + gesture.liftPower * GESTURE_LIFT_SCALE + centerLiftBonus : BASE_LIFT;
-  ballState.velocity.y = Math.max(ballState.velocity.y, minLift);
+  if (smash) {
+    // A smash needs to dive down and land inside the opponent's court
+    // quickly, not arc over on a normal lofted trajectory — at SMASH_BASE_POWER's
+    // speed, even a shallow arc travels far enough in the air to sail past
+    // their baseline before gravity brings it down. Back-solve the vy that
+    // brings it down exactly at a safe landing depth past the net instead.
+    const distanceToNet = Math.abs(racketPosition.z);
+    const targetZ = forwardZ * SMASH_LAND_DEPTH;
+    const timeToTarget = Math.abs(targetZ - racketPosition.z) / hitPower;
+    let smashVy =
+      (BALL_RADIUS - racketPosition.y - 0.5 * GRAVITY * timeToTarget * timeToTarget) / timeToTarget;
 
-  // Guarantee every hit clears the net (this is what was missing for the bot's
-  // returns specifically, but it applies to any hit): back-solve the vertical
-  // velocity this shot's parabola needs so it's above the net, plus a
-  // clearance margin, exactly when it reaches z=0 — a fast, flat-ish hit can
-  // otherwise get there well before the flat minLift above would have arced
-  // it that high.
-  const distanceToNet = Math.abs(racketPosition.z);
-  if (distanceToNet > MIN_NET_CLEAR_DISTANCE && Math.abs(ballState.velocity.z) > 0.01) {
-    const timeToNet = distanceToNet / Math.abs(ballState.velocity.z);
-    const requiredHeight = NET_TOP_HEIGHT + BALL_RADIUS + NET_CLEARANCE;
-    const requiredVy =
-      (requiredHeight - racketPosition.y - 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
-    ballState.velocity.y = Math.max(ballState.velocity.y, requiredVy);
+    // That dive is intentionally steep/low, so double-check it doesn't clip
+    // the net on the way down. Uses the bare net-collision threshold, not
+    // the padded NET_CLEARANCE margin the normal-shot check below uses — a
+    // smash is meant to just clear it low and hard, not arc over with room
+    // to spare, and the padded margin would force it high enough to undo
+    // the dive and overshoot the court again.
+    if (distanceToNet > MIN_NET_CLEAR_DISTANCE) {
+      const timeToNet = distanceToNet / hitPower;
+      const bareNetHeight = NET_TOP_HEIGHT + BALL_RADIUS;
+      const heightAtNet =
+        racketPosition.y + smashVy * timeToNet + 0.5 * GRAVITY * timeToNet * timeToNet;
+      if (heightAtNet < bareNetHeight) {
+        smashVy = (bareNetHeight - racketPosition.y - 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
+      }
+    }
+
+    ballState.velocity.y = smashVy;
+  } else {
+    // Add some upward force; a gesture swing's rise adds extra lift on top,
+    // and a center swing always gets a lift bonus even without much hand rise —
+    // that's what makes it read as "the lob shot" rather than just another direction.
+    const centerLiftBonus = isCenterSwing ? CENTER_HIT_LIFT_BONUS : 0;
+    const minLift = gesture ? BASE_LIFT + gesture.liftPower * GESTURE_LIFT_SCALE + centerLiftBonus : BASE_LIFT;
+    ballState.velocity.y = Math.max(ballState.velocity.y, minLift);
+
+    // Guarantee every hit clears the net (this is what was missing for the bot's
+    // returns specifically, but it applies to any hit): back-solve the vertical
+    // velocity this shot's parabola needs so it's above the net, plus a
+    // clearance margin, exactly when it reaches z=0 — a fast, flat-ish hit can
+    // otherwise get there well before the flat minLift above would have arced
+    // it that high.
+    const distanceToNet = Math.abs(racketPosition.z);
+    if (distanceToNet > MIN_NET_CLEAR_DISTANCE && Math.abs(ballState.velocity.z) > 0.01) {
+      const timeToNet = distanceToNet / Math.abs(ballState.velocity.z);
+      const requiredHeight = NET_TOP_HEIGHT + BALL_RADIUS + NET_CLEARANCE;
+      const requiredVy =
+        (requiredHeight - racketPosition.y - 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
+      ballState.velocity.y = Math.max(ballState.velocity.y, requiredVy);
+    }
   }
 
   // Apply spin based on racket angle

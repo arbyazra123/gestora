@@ -22,7 +22,9 @@ import {
   consumePendingSwing,
   updateSwingAnimation,
   getCurrentFingerCount,
-  getArmedDirection
+  getArmedDirection,
+  consumePendingSmash,
+  isSmashArmed
 } from './hand-tracking.js';
 import {
   createBall,
@@ -70,6 +72,7 @@ import {
   updateRallyCount,
   updateFingerCount,
   updateSwingDirection,
+  updateSmashStatus,
   showStatus,
   hideStatus,
   showGameOver,
@@ -119,6 +122,12 @@ export default class TableTennisGame {
     // current side since the last hit — a second bounce before either
     // player touches it again is a fault (see handleBounce()).
     this.awaitingReturnHit = false;
+
+    // Whether we're waiting on the player to press SPACE to kick off the
+    // start-of-game countdown (see promptGameStart()) — this only gates
+    // the game actually beginning/restarting, not individual serves,
+    // which are handled entirely by the finger-count challenge.
+    this.awaitingGameStart = false;
 
     // Keyboard controls
     this.keyboardHandler = null;
@@ -204,12 +213,53 @@ export default class TableTennisGame {
    */
   setupKeyboardControls() {
     this.keyboardHandler = (event) => {
-      if (event.code === 'KeyR' && isGameOver()) {
+      if (event.code === 'Space' && !event.repeat && this.awaitingGameStart) {
+        this.awaitingGameStart = false;
+        this.runStartCountdown();
+      } else if (event.code === 'KeyR' && isGameOver()) {
         this.restartGame();
       }
     };
 
     window.addEventListener('keydown', this.keyboardHandler);
+  }
+
+  /**
+   * Wait for the player to press SPACE before the game (or a restarted
+   * game) actually begins — individual serves within the game are never
+   * gated behind this, only the initial kickoff.
+   */
+  promptGameStart() {
+    this.awaitingGameStart = true;
+    showStatus('Press SPACE to Start', 0);
+  }
+
+  /**
+   * 3-2-1 countdown after SPACE is pressed, then hands off to the normal
+   * serve flow.
+   */
+  runStartCountdown() {
+    let count = 3;
+    showStatus(String(count), 0);
+
+    const tick = () => {
+      if (!this.isRunning) return; // game was stopped mid-countdown
+
+      count--;
+      if (count > 0) {
+        showStatus(String(count), 0);
+        setTimeout(tick, 1000);
+      } else {
+        showStatus('GO!', 600);
+        setTimeout(() => {
+          if (!this.isRunning) return;
+          hideStatus();
+          this.beginServeTurn();
+        }, 600);
+      }
+    };
+
+    setTimeout(tick, 1000);
   }
 
   /**
@@ -305,7 +355,7 @@ export default class TableTennisGame {
     await startAudioContext();
     startMusic();
 
-    this.beginServeTurn();
+    this.promptGameStart();
 
     // Start animation loop
     this.animate();
@@ -355,6 +405,7 @@ export default class TableTennisGame {
     stopMusic();
     cancelServeChallenge();
     hideServeChallenge();
+    this.awaitingGameStart = false;
 
     console.log('[Table Tennis] Stopped');
   }
@@ -469,6 +520,7 @@ export default class TableTennisGame {
     updateRallyCount(getRallyCount());
     updateFingerCount(getCurrentFingerCount());
     updateSwingDirection(getArmedDirection());
+    updateSmashStatus(isSmashArmed());
   }
 
   /**
@@ -479,7 +531,8 @@ export default class TableTennisGame {
     if (checkPlayerRacketCollision(playerRacket, ball, ballState)) {
       const velocity = getRacketVelocity();
       const swing = consumePendingSwing();
-      hitBall(ball.position, velocity, 'player', swing);
+      const smash = consumePendingSmash();
+      hitBall(ball.position, velocity, 'player', swing, smash);
       this.awaitingReturnHit = false;
     }
 
@@ -602,6 +655,6 @@ export default class TableTennisGame {
     hideServeChallenge();
     this.updateUI();
     hideStatus();
-    this.beginServeTurn();
+    this.promptGameStart();
   }
 }

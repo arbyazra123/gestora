@@ -188,7 +188,7 @@ function createPlayerRacket() {
 
   // Position racket in player area
   playerRacket.position.set(2, 1, -5);
-  playerRacket.rotation.x = -Math.PI / 4;
+  playerRacket.rotation.x = -Math.PI / 2;
   scene.add(playerRacket);
 }
 
@@ -201,6 +201,7 @@ function createBotRacket() {
   const head = new THREE.Mesh(headGeometry, headMaterial);
   head.rotation.x = Math.PI / 2;
   head.castShadow = true;
+  
   botRacket.add(head);
 
   // Racket strings
@@ -225,8 +226,13 @@ function createBotRacket() {
   botRacket.add(handle);
 
   // Position racket in bot area
-  botRacket.position.set(0, 1, 5);
-  botRacket.rotation.x = Math.PI / 4;
+  botRacket.position.set(0, 1, 4.5);
+  // -PI/2 (radians, not degrees — 180 here was being read as ~233° after
+  // wrapping) is the angle where this local geometry's face normal ends up
+  // pointing toward -Z (toward the player, correct for the bot) and the
+  // handle hangs down toward -Y at the same time — see BOT_BASE_TILT in
+  // bot-ai.js, which must match this.
+  botRacket.rotation.x = -Math.PI / 2;
   scene.add(botRacket);
 }
 

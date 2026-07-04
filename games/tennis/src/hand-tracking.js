@@ -32,6 +32,15 @@ let swingLowY = null;
 let pendingSwing = null; // { direction, liftPower, expiresAt }
 let activeSwingAnim = null; // { direction, startTime }
 
+// Smash gesture: just showing an open hand (5 fingers) is enough — no
+// swing motion required. Refreshed every frame the gesture is held (same
+// as the direction swing's pendingSwing), so whenever the ball actually
+// touches the racket, a still-held open hand is picked up as a smash.
+const SMASH_FINGER_COUNT = 5;
+
+let smashActive = false;
+let pendingSmash = null; // { expiresAt }
+
 // Raw finger count, for the on-screen debug readout (distinct from the
 // direction-only gesture above, which ignores combinations like "index +
 // pinky" that don't map to a swing).
@@ -58,6 +67,7 @@ export function handleHandTrackingResults(results) {
     isHandDetected = false;
     currentFingerCount = null;
     resetSwingState();
+    resetSmashState();
     return;
   }
 
@@ -74,6 +84,7 @@ export function handleHandTrackingResults(results) {
   const position = mediaPipeToWorld(wrist);
 
   updateSwingGesture(landmarks, position.y);
+  updateSmashGesture(currentFingerCount);
 
   // Calculate rotation based on hand orientation
   const direction = new THREE.Vector3(
@@ -228,6 +239,50 @@ export function getArmedDirection() {
 }
 
 /**
+ * Just showing an open hand (5 fingers) is enough to smash — no swing
+ * motion needed. Fires the visual snap once on the rising edge (so it's
+ * not replayed every frame while held), and keeps pendingSmash fresh the
+ * whole time the gesture is held.
+ */
+function updateSmashGesture(fingerCount) {
+  if (fingerCount !== SMASH_FINGER_COUNT) {
+    resetSmashState();
+    return;
+  }
+
+  if (!smashActive) {
+    smashActive = true;
+    activeSwingAnim = { direction: 'smash', startTime: performance.now(), lastArc: 0 };
+  }
+
+  pendingSmash = { expiresAt: performance.now() + 500 };
+}
+
+function resetSmashState() {
+  smashActive = false;
+}
+
+export function isSmashArmed() {
+  return smashActive;
+}
+
+/**
+ * Consume the pending smash (if any and not expired) so it's applied to
+ * exactly one ball hit.
+ */
+export function consumePendingSmash() {
+  if (!pendingSmash) return null;
+  if (performance.now() > pendingSmash.expiresAt) {
+    pendingSmash = null;
+    return null;
+  }
+  const smash = pendingSmash;
+  pendingSmash = null;
+  activeSwingAnim = { direction: 'smash', startTime: performance.now(), lastArc: 0 };
+  return smash;
+}
+
+/**
  * Consume the pending swing (if any and not expired) so it's applied to
  * exactly one ball hit.
  */
@@ -244,16 +299,17 @@ export function consumePendingSwing() {
 }
 
 const CENTER_LIFT_BUMP = 0.9; // world units the racket visually rises for a center swing
+const SMASH_DROP_BUMP = -1.8; // world units the racket visually drops for a smash — bigger and inverted vs. the center lift
 
 /**
  * Play the swing "snap" visual. Left/right twist the racket on rotation.z —
  * the one rotation axis hand-tracking never touches, so it can't fight the
- * per-frame rotation tracking above. Center instead bumps the racket's
- * position.y up and back down, reading as a bottom-to-up lift swing;
- * position is safe to overlay the same way since hand-tracking always
- * copy()s a freshly computed position over it rather than lerping from
- * whatever's currently there, so this offset never feeds back into its
- * own smoothing state.
+ * per-frame rotation tracking above. Center and smash instead bump the
+ * racket's position.y (up for center's lift, down for a smash's downward
+ * chop) and back; position is safe to overlay the same way since
+ * hand-tracking always copy()s a freshly computed position over it rather
+ * than lerping from whatever's currently there, so this offset never feeds
+ * back into its own smoothing state.
  */
 export function updateSwingAnimation() {
   if (!activeSwingAnim || !playerRacket) return;
@@ -269,13 +325,14 @@ export function updateSwingAnimation() {
 
   const arc = Math.sin(t * Math.PI);
 
-  if (activeSwingAnim.direction === 'center') {
+  if (activeSwingAnim.direction === 'center' || activeSwingAnim.direction === 'smash') {
     // Additive delta from last frame's arc value, not an absolute set — this
     // function runs every render frame (often several per hand-tracking
-    // update), so adding the full arc each time would compound way past
-    // CENTER_LIFT_BUMP. The deltas telescope to exactly arc(t) of lift
+    // update), so adding the full arc each time would compound way past the
+    // intended bump. The deltas telescope to exactly arc(t) of offset
     // relative to wherever hand-tracking has the racket positioned now.
-    playerRacket.position.y += CENTER_LIFT_BUMP * (arc - activeSwingAnim.lastArc);
+    const bump = activeSwingAnim.direction === 'smash' ? SMASH_DROP_BUMP : CENTER_LIFT_BUMP;
+    playerRacket.position.y += bump * (arc - activeSwingAnim.lastArc);
     activeSwingAnim.lastArc = arc;
   } else {
     playerRacket.rotation.z = (DIRECTION_TWIST[activeSwingAnim.direction] ?? 0) * arc;

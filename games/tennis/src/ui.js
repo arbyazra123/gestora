@@ -32,16 +32,16 @@ export function setupUI(container) {
   scoreDisplay = document.createElement('div');
   scoreDisplay.style.cssText = `
     position: absolute;
-    top: 20px;
+    top: 150px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.7);
-    padding: 20px 40px;
+    padding: 15px 20px;
     border-radius: 12px;
     display: flex;
-    gap: 40px;
+    gap: 30px;
     align-items: center;
-    font-size: 32px;
+    font-size: 24px;
     font-weight: bold;
     backdrop-filter: blur(10px);
   `;
@@ -50,7 +50,7 @@ export function setupUI(container) {
       <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">YOU</div>
       <div id="player-score">0</div>
     </div>
-    <div style="font-size: 48px; opacity: 0.5;">:</div>
+    <div style="font-size: 32px; opacity: 0.5;">:</div>
     <div style="text-align: center;">
       <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">BOT</div>
       <div id="bot-score">0</div>
@@ -61,7 +61,7 @@ export function setupUI(container) {
   gameScoreDisplay = document.createElement('div');
   gameScoreDisplay.style.cssText = `
     position: absolute;
-    top: 100px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.5);
@@ -125,6 +125,9 @@ export function setupUI(container) {
     Fingers: <span id="finger-count-value" style="font-weight: bold; color: #ffcc00;">-</span>
     &nbsp;|&nbsp;
     Swing: <span id="swing-direction-value" style="font-weight: bold; color: #4ade80;">-</span>
+    <div id="smash-status-value" style="font-weight: bold; color: #f87171; margin-top: 4px; visibility: hidden;">
+      🔥 SMASH READY!
+    </div>
   `;
 
   // Serve challenge — 3 finger-count digits shown one at a time, grey
@@ -174,13 +177,13 @@ export function setupUI(container) {
   controlsDisplay = document.createElement('div');
   controlsDisplay.style.cssText = `
     position: absolute;
-    bottom: 30px;
+    top: 10px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.6);
-    padding: 20px 30px;
+    padding: 15px 20px;
     border-radius: 12px;
-    font-size: 16px;
+    font-size: 14px;
     text-align: center;
     backdrop-filter: blur(10px);
     max-width: 600px;
@@ -191,7 +194,8 @@ export function setupUI(container) {
     </div>
     <div style="opacity: 0.9; line-height: 1.6;">
       Move your hand to control the paddle<br>
-      <span style="font-size: 14px; opacity: 0.7;">
+      <span style="font-size: 12px; opacity: 0.7;">
+        Press SPACE to start • 1/2/3 fingers to aim • 5 fingers to smash<br>
         Show the finger-count digits in order to serve • First to 2 games wins
       </span>
     </div>
@@ -239,6 +243,12 @@ export function updateSwingDirection(direction) {
   const el = document.getElementById('swing-direction-value');
   if (!el) return;
   el.textContent = direction ? direction.toUpperCase() : '-';
+}
+
+export function updateSmashStatus(armed) {
+  const el = document.getElementById('smash-status-value');
+  if (!el) return;
+  el.style.visibility = armed ? 'visible' : 'hidden';
 }
 
 export function showStatus(message, duration = 0) {

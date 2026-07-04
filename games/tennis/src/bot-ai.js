@@ -14,7 +14,7 @@ const BOT_SPEED = 0.10;
 const BOT_REACTION_TIME = 0.1; // seconds delay
 const BOT_ACCURACY = 0.85; // 0-1, how accurate the bot is
 const BOT_MAX_X = 2; // Movement range
-const BOT_BASE_TILT = Math.PI / 4; // Matches the resting tilt set in scene.js createBotRacket()
+const BOT_BASE_TILT = -Math.PI / 2; // Matches the resting tilt set in scene.js createBotRacket()
 const BOT_MAX_YAW = Math.PI / 6;
 const BOT_MAX_PITCH_ADJUST = Math.PI / 6;
 
@@ -158,8 +158,8 @@ function updateRacketOrientation() {
     BOT_MAX_PITCH_ADJUST
   );
 
-  botRacket.rotation.y = 135;
-  botRacket.rotation.x = 80;
+  botRacket.rotation.y = yaw;
+  botRacket.rotation.x = BOT_BASE_TILT + pitchAdjust;
 }
 
 export function shouldBotHit(ballPosition, racketPosition) {
