@@ -151,3 +151,24 @@ export function getFieldBounds() {
     paddleZOffset: PADDLE_Z_OFFSET
   };
 }
+
+/**
+ * Project a world-space point to on-screen pixel coordinates relative to
+ * the VIEWPORT (using the canvas's actual getBoundingClientRect(), not just
+ * its clientWidth/clientHeight), using the camera's actual current
+ * projection. Callers must position their element with `position: fixed`
+ * (not `absolute` inside some container) so these viewport-relative pixels
+ * land correctly — if the container the UI overlay lives in doesn't
+ * exactly match the canvas's own on-screen box (common if the host page
+ * constrains it, e.g. sidebars/tab bars), `absolute` positioning relative
+ * to that container silently drifts from where the canvas actually is,
+ * which is what caused UI elements to land in the wrong place before.
+ */
+export function worldToScreen(x, y, z) {
+  const vector = new THREE.Vector3(x, y, z).project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    x: rect.left + (vector.x * 0.5 + 0.5) * rect.width,
+    y: rect.top + (1 - (vector.y * 0.5 + 0.5)) * rect.height
+  };
+}

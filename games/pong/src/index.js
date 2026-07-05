@@ -16,7 +16,9 @@ import {
   renderer,
   playerPaddle,
   botPaddle,
-  getFieldBounds
+  getFieldBounds,
+  worldToScreen,
+  FIELD_LENGTH
 } from './scene.js';
 import {
   setupHeadTracking,
@@ -77,7 +79,6 @@ import {
 } from './game-logic.js';
 import {
   setupUI,
-  updateScore,
   showStatus,
   hideStatus,
   showGameOver,
@@ -86,8 +87,10 @@ import {
   updateAbilityCooldowns,
   updateActiveAbility,
   updateFingerCount,
+  positionSkillTextAnchors,
   cleanupUI
 } from './ui.js';
+import { createScoreDisplay, updateScoreDisplay, disposeScoreDisplay } from './score-display.js';
 import {
   initAudio,
   startAudioContext,
@@ -134,6 +137,7 @@ export default class PongGame {
       initAudio();
       this.setupAudioUnlock();
       createBall(scene);
+      createScoreDisplay(scene);
 
       setupHeadTracking(playerPaddle);
       setupBotAI(botPaddle, ball);
@@ -193,6 +197,19 @@ export default class PongGame {
     };
     window.addEventListener('pointerdown', this.audioUnlockHandler);
     window.addEventListener('keydown', this.audioUnlockHandler);
+  }
+
+  /**
+   * Skill text sits at the center of each side's half of the table,
+   * projected from real world points via scene.js's worldToScreen() rather
+   * than a guessed viewport percentage, so it tracks the table's actual
+   * on-screen position regardless of aspect ratio/container layout.
+   */
+  updateAnchoredUIPositions() {
+    positionSkillTextAnchors(
+      worldToScreen(0, 0.1, -FIELD_LENGTH / 4),
+      worldToScreen(0, 0.1, FIELD_LENGTH / 4)
+    );
   }
 
   setupKeyboardControls() {
@@ -286,6 +303,7 @@ export default class PongGame {
     console.log('[Pong] Cleaning up...');
 
     disposeVisionTracking();
+    disposeScoreDisplay();
 
     if (this.keyboardHandler) {
       window.removeEventListener('keydown', this.keyboardHandler);
@@ -367,6 +385,13 @@ export default class PongGame {
     setHeadBoost(isPaddleBoostActive('player'));
     setBotBoost(isPaddleBoostActive('bot'));
 
+    // Recomputed every frame rather than once at init/resize — a single
+    // snapshot risked reading the canvas's layout rect before the browser
+    // had actually settled it, silently freezing in a wrong position for
+    // the rest of the session. This is cheap enough (two vector projections
+    // + a DOM rect read) to just never go stale.
+    this.updateAnchoredUIPositions();
+
     updateActiveAbility('player', getActiveAbility('player'));
     updateActiveAbility('bot', getActiveAbility('bot'));
 
@@ -443,7 +468,7 @@ export default class PongGame {
 
   updateUI() {
     const score = getScoreDisplay();
-    updateScore(score.player, score.bot);
+    updateScoreDisplay(score.player, score.bot);
   }
 
   restartGame() {

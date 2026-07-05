@@ -14,7 +14,7 @@ let scene;
 const BALL_RADIUS = 0.12;
 const INITIAL_SPEED = 3.4;
 const MAX_SPEED = 20;
-const SPEED_GROWTH = 1.1; // per paddle hit
+const SPEED_GROWTH = 1.05; // per paddle hit
 const MAX_BOUNCE_ANGLE = Math.PI / 3; // 60 degrees, classic pong paddle-angle feel
 
 export const ballState = {

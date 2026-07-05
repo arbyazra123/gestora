@@ -14,6 +14,13 @@ const SMOOTHING_FACTOR = 0.3;
 const prevPosition = new THREE.Vector3();
 const prevRotation = new THREE.Euler();
 
+// Vertical calibration offset: shifts the racket's mapped height up (positive)
+// or down (negative) relative to the raw MediaPipe wrist height, to compensate
+// for camera placement/hand height not matching the in-scene racket height.
+// Tune this if the racket sits noticeably too high/low relative to your real hand.
+const HAND_Y_SHIFT = -0.4;
+const HAND_X_SHIFT = 0;
+
 // Hand tracking state
 let isHandDetected = false;
 
@@ -51,6 +58,21 @@ const THUMB_IP = 3;
 const PALM_BASE = 17; // pinky MCP
 
 let currentFingerCount = null;
+
+// Swing/smash gesture recognition is suppressed until the game has actually
+// started (see index.js's promptGameStart()/beginServeTurn()) — otherwise
+// players lining up their hand before the countdown finishes could
+// accidentally arm a swing or smash early. Racket position/rotation
+// tracking and the raw finger-count readout are unaffected.
+let gesturesEnabled = false;
+
+export function setGestureDetectionEnabled(enabled) {
+  gesturesEnabled = enabled;
+  if (!enabled) {
+    resetSwingState();
+    resetSmashState();
+  }
+}
 
 export function setupHandTracking(racket, cameraService, mediaPipeService) {
   playerRacket = racket;
@@ -206,6 +228,11 @@ function drawCameraPreview(results) {
  * gesture is held so a ball hit always picks up the latest direction/lift.
  */
 function updateSwingGesture(landmarks, handY) {
+  if (!gesturesEnabled) {
+    resetSwingState();
+    return;
+  }
+
   const direction = getGestureDirection(landmarks);
 
   if (!direction) {
@@ -245,6 +272,11 @@ export function getArmedDirection() {
  * whole time the gesture is held.
  */
 function updateSmashGesture(fingerCount) {
+  if (!gesturesEnabled) {
+    resetSmashState();
+    return;
+  }
+
   if (fingerCount !== SMASH_FINGER_COUNT) {
     resetSmashState();
     return;
@@ -346,10 +378,11 @@ export function updateSwingAnimation() {
  */
 function mediaPipeToWorld(landmark) {
   // Map x from [0, 1] to [-6, 6] (court width area)
-  const x = (landmark.x - 0.33) * -20;
+  const x = (landmark.x - 0.33) * -20 + HAND_X_SHIFT;
 
-  // Map y from [0, 1] to [3, 0] (inverted, higher in screen = higher in world)
-  const y = (0 - landmark.y) * 5 + 5;
+  // Map y from [0, 1] to [3, 0] (inverted, higher in screen = higher in world),
+  // plus the calibration shift above.
+  const y = (0 - landmark.y) * 5 + 5 + HAND_Y_SHIFT;
 
   // Map z from [0, -0.3] to [-8, -4] (depth, closer to player side)
   const z = landmark.z * -10 - 4.5;

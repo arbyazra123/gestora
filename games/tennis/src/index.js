@@ -24,7 +24,8 @@ import {
   getCurrentFingerCount,
   getArmedDirection,
   consumePendingSmash,
-  isSmashArmed
+  isSmashArmed,
+  setGestureDetectionEnabled
 } from './hand-tracking.js';
 import {
   createBall,
@@ -231,6 +232,7 @@ export default class TableTennisGame {
    */
   promptGameStart() {
     this.awaitingGameStart = true;
+    setGestureDetectionEnabled(false);
     showStatus('Press SPACE to Start', 0);
   }
 
@@ -269,6 +271,10 @@ export default class TableTennisGame {
    */
   beginServeTurn() {
     if (gameState.gameStatus !== 'ready') return;
+
+    // The game is genuinely underway once a serve turn begins — allow swing/
+    // smash gestures from here on (harmless to call again on later points).
+    setGestureDetectionEnabled(true);
 
     if (getCurrentServer() === 'player') {
       this.startPlayerServeChallenge();
@@ -406,6 +412,7 @@ export default class TableTennisGame {
     cancelServeChallenge();
     hideServeChallenge();
     this.awaitingGameStart = false;
+    setGestureDetectionEnabled(false);
 
     console.log('[Table Tennis] Stopped');
   }

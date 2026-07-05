@@ -5,14 +5,18 @@
 
 import { ABILITY_TYPES } from './abilities.js';
 
-const ABILITY_ICONS = { paddleBoost: '⚡', slowMo: '🐌', shield: '🛡️' };
-
 let uiOverlay;
-let scoreDisplay;
+let skillTextFar;
+let skillTextNear;
 let statusDisplay;
 let controlsDisplay;
 let abilityPanelDisplay;
 let fingerCountDisplay;
+
+// "Lying flat on the table" look for the skill-activated text (the score
+// display itself is now real 3D geometry — see score-display.js — so it
+// doesn't need this CSS approximation).
+const TABLE_WARP_TRANSFORM = 'perspective(400px) rotateX(45deg)';
 
 function patternHint(pattern) {
   return pattern.join(' → '); // e.g. "5 → 3 → 2"
@@ -33,59 +37,48 @@ export function setupUI(container) {
     z-index: 1000;
   `;
 
-  scoreDisplay = document.createElement('div');
-  scoreDisplay.style.cssText = `
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.7);
-    padding: 15px 25px;
-    border-radius: 12px;
-    display: flex;
-    gap: 20px;
-    align-items: center;
-    font-size: 22px;
+  // "Skill Activated" call-outs, warped with a CSS 3D tilt, anchored to the
+  // center of each side's half of the table (see positionSkillTextAnchors())
+  // so they sit on the table surface itself instead of floating above it.
+  skillTextFar = document.createElement('div');
+  skillTextFar.id = 'skill-text-bot';
+  skillTextFar.style.cssText = `
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -50%) ${TABLE_WARP_TRANSFORM};
+    color: #ff5a3c;
     font-weight: bold;
-    backdrop-filter: blur(10px);
+    font-size: 16px;
+    text-shadow: 0 0 4px rgba(255, 90, 60, 0.8);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s;
   `;
-  scoreDisplay.innerHTML = `
-    <div style="text-align: center;">
-      <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">YOU</div>
-      <div id="player-score">0</div>
-      <div id="player-ability" style="font-size: 12px; color: #4ade80; margin-top: 4px; min-height: 14px;"></div>
-    </div>
-    <div style="font-size: 38px; opacity: 0.5;">:</div>
-    <div style="text-align: center;">
-      <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">BOT</div>
-      <div id="bot-score">0</div>
-      <div id="bot-ability" style="font-size: 12px; color: #f87171; margin-top: 4px; min-height: 14px;"></div>
-    </div>
-  `;
+  skillTextFar.textContent = 'Skill Activated';
 
-  statusDisplay = document.createElement('div');
-  statusDisplay.style.cssText = `
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 30px 60px;
-    border-radius: 16px;
-    font-size: 36px;
+  skillTextNear = document.createElement('div');
+  skillTextNear.id = 'skill-text-player';
+  skillTextNear.style.cssText = `
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -50%) ${TABLE_WARP_TRANSFORM};
+    color: #ff5a3c;
     font-weight: bold;
-    text-align: center;
-    white-space: pre-line;
-    display: none;
-    backdrop-filter: blur(10px);
+    font-size: 24px;
+    text-shadow: 0 0 10px rgba(255, 90, 60, 0.8);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s;
   `;
-  statusDisplay.id = 'status-display';
+  skillTextNear.textContent = 'Skill Activated';
 
   abilityPanelDisplay = document.createElement('div');
   abilityPanelDisplay.id = 'ability-panel';
   abilityPanelDisplay.style.cssText = `
     position: absolute;
-    top: 120px;
+    top: 20px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.7);
@@ -99,7 +92,6 @@ export function setupUI(container) {
     .map(
       ([key, ability]) => `
     <div style="text-align: center;">
-      <div style="font-size: 20px;">${ABILITY_ICONS[key] || '⚡'}</div>
       <div style="font-weight: bold; font-size: 12px;">${ability.name}</div>
       <div style="opacity: 0.7; font-size: 11px;">${patternHint(ability.pattern)}</div>
       <div id="cooldown-${key}" style="margin-top: 4px; font-size: 12px; color: #4ade80;">Ready</div>
@@ -141,7 +133,7 @@ export function setupUI(container) {
   `;
   controlsDisplay.innerHTML = `
     <div style="margin-bottom: 10px;">
-      <strong>🏓 Hand Pong</strong>
+      <strong>Hand Pong</strong>
     </div>
     <div style="opacity: 1; line-height: 1.6;">
       Move your hand left/right to control the paddle<br>
@@ -151,8 +143,9 @@ export function setupUI(container) {
     </div>
   `;
 
-  uiOverlay.appendChild(scoreDisplay);
-  uiOverlay.appendChild(statusDisplay);
+  uiOverlay.appendChild(skillTextFar);
+  uiOverlay.appendChild(skillTextNear);
+  // uiOverlay.appendChild(statusDisplay);
   uiOverlay.appendChild(abilityPanelDisplay);
   uiOverlay.appendChild(fingerCountDisplay);
   uiOverlay.appendChild(controlsDisplay);
@@ -166,14 +159,20 @@ export function setupUI(container) {
   console.log('[Pong] UI initialized');
 }
 
-export function updateScore(playerScore, botScore) {
-  document.getElementById('player-score').textContent = playerScore;
-  document.getElementById('bot-score').textContent = botScore;
+/**
+ * Reposition the two "Skill Activated" anchors the same way, to the center
+ * of each side's half of the table.
+ */
+export function positionSkillTextAnchors(botScreenPos, playerScreenPos) {
+  skillTextFar.style.left = `${botScreenPos.x}px`;
+  skillTextFar.style.top = `${botScreenPos.y}px`;
+  skillTextNear.style.left = `${playerScreenPos.x}px`;
+  skillTextNear.style.top = `${playerScreenPos.y}px`;
 }
 
 export function showStatus(message, duration = 0) {
-  statusDisplay.textContent = message;
-  statusDisplay.style.display = 'block';
+  // statusDisplay.textContent = message;
+  // statusDisplay.style.display = 'block';
 
   if (duration > 0) {
     setTimeout(() => hideStatus(), duration);
@@ -222,9 +221,15 @@ export function updateAbilityCooldowns(snapshot) {
 }
 
 export function updateActiveAbility(side, type) {
-  const el = document.getElementById(`${side}-ability`);
+  const el = side === 'player' ? skillTextNear : skillTextFar;
   if (!el) return;
-  el.textContent = type ? `⚡ ${ABILITY_TYPES[type]?.name || type}` : '';
+
+  if (type) {
+    el.textContent = `${ABILITY_TYPES[type]?.name || type} Activated`;
+    el.style.opacity = '1';
+  } else {
+    el.style.opacity = '0';
+  }
 }
 
 export function cleanupUI() {

@@ -13,7 +13,7 @@ export let court, net, playerRacket, botRacket;
 const COURT_LENGTH = 23.77;
 const COURT_WIDTH = 10.97;
 const NET_HEIGHT = 0.4;
-const COURT_SCALE = 0.3; // Scale down for better visualization
+const COURT_SCALE = 0.33; // Scale down for better visualization
 
 export function initScene(container) {
   console.log('[Table Tennis] Initializing scene...');
@@ -24,7 +24,7 @@ export function initScene(container) {
 
   // Create camera
   camera = new THREE.PerspectiveCamera(
-    80,
+    100,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
@@ -154,78 +154,69 @@ function createNet() {
   scene.add(net);
 }
 
-function createPlayerRacket() {
-  playerRacket = new THREE.Group();
+const PADDLE_BLADE_RADIUS = 0.35;
+const PADDLE_BLADE_THICKNESS = 0.05;
+const PADDLE_HANDLE_LENGTH = 0.35;
+const PADDLE_HANDLE_RADIUS = 0.045;
 
-  // Racket head (oval shape)
-  const headGeometry = new THREE.TorusGeometry(0.4, 0.03, 16, 32);
-  const headMaterial = new THREE.MeshStandardMaterial({ color: 0xff6b35 }); // Orange
-  const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.rotation.x = Math.PI / 2;
-  head.castShadow = true;
-  playerRacket.add(head);
+/**
+ * A real table-tennis paddle: a flat, solid blade (not a strung hoop like a
+ * tennis racket), no strings, with a short stubby handle — real paddles are
+ * required to have differently-colored faces, so one face gets the
+ * player/bot's signature color and the other is black.
+ *
+ * CylinderGeometry's cap normals point along local Y by default with no
+ * rotation needed, which conveniently already matches this game's existing
+ * "the racket's face normal is the group's local Y axis" convention (see
+ * bot-ai.js's updateRacketOrientation()) — unlike the old TorusGeometry
+ * head, which needed its own extra rotation to line up with that axis.
+ */
+function createPaddle(faceColor) {
+  const racket = new THREE.Group();
 
-  // Racket strings
-  const stringsMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.5,
-    wireframe: true
-  });
-  const stringsGeometry = new THREE.PlaneGeometry(0.7, 0.7, 10, 10);
-  const strings = new THREE.Mesh(stringsGeometry, stringsMaterial);
-  strings.rotation.x = Math.PI / 2;
-  playerRacket.add(strings);
+  const bladeGeometry = new THREE.CylinderGeometry(
+    PADDLE_BLADE_RADIUS,
+    PADDLE_BLADE_RADIUS,
+    PADDLE_BLADE_THICKNESS,
+    32
+  );
+  // Cylinder material groups are [side, top cap, bottom cap].
+  const blade = new THREE.Mesh(bladeGeometry, [
+    new THREE.MeshStandardMaterial({ color: faceColor, roughness: 0.8 }), // rubber edge
+    new THREE.MeshStandardMaterial({ color: faceColor, roughness: 0.5 }), // front face
+    new THREE.MeshStandardMaterial({ color: faceColor, roughness: 0.5 }) // back face (paired with black, per ITTF two-tone rule)
+  ]);
+  blade.castShadow = true;
+  racket.add(blade);
 
-  // Handle (extends outward from the rim, in the same plane as the head)
-  const handleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8);
-  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4a4a });
+  // Handle — short and a bit thicker than a tennis grip, extending from the
+  // blade's edge along local -Z (matching the existing "-Z = handle
+  // direction" convention hand-tracking/bot-ai already assume).
+  const handleGeometry = new THREE.CylinderGeometry(
+    PADDLE_HANDLE_RADIUS,
+    PADDLE_HANDLE_RADIUS,
+    PADDLE_HANDLE_LENGTH,
+    8
+  );
+  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2f1f, roughness: 0.9 }); // wood-brown grip
   const handle = new THREE.Mesh(handleGeometry, handleMaterial);
   handle.rotation.x = Math.PI / 2;
-  handle.position.z = -0.75;
+  handle.position.z = -(PADDLE_BLADE_RADIUS + PADDLE_HANDLE_LENGTH / 2 - 0.05); // slight overlap into the blade edge
   handle.castShadow = true;
-  playerRacket.add(handle);
+  racket.add(handle);
 
-  // Position racket in player area
+  return racket;
+}
+
+function createPlayerRacket() {
+  playerRacket = createPaddle(0xff6b35); // Orange
   playerRacket.position.set(2, 1, -5);
   playerRacket.rotation.x = -Math.PI / 2;
   scene.add(playerRacket);
 }
 
 function createBotRacket() {
-  botRacket = new THREE.Group();
-
-  // Racket head (oval shape)
-  const headGeometry = new THREE.TorusGeometry(0.4, 0.03, 16, 32);
-  const headMaterial = new THREE.MeshStandardMaterial({ color: 0x4169e1 }); // Royal blue
-  const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.rotation.x = Math.PI / 2;
-  head.castShadow = true;
-  
-  botRacket.add(head);
-
-  // Racket strings
-  const stringsMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.5,
-    wireframe: true
-  });
-  const stringsGeometry = new THREE.PlaneGeometry(0.7, 0.7, 10, 10);
-  const strings = new THREE.Mesh(stringsGeometry, stringsMaterial);
-  strings.rotation.x = Math.PI / 2;
-  botRacket.add(strings);
-
-  // Handle (extends outward from the rim, in the same plane as the head)
-  const handleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8);
-  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4a4a });
-  const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-  handle.rotation.x = Math.PI / 2;
-  handle.position.z = -0.75;
-  handle.castShadow = true;
-  botRacket.add(handle);
-
-  // Position racket in bot area
+  botRacket = createPaddle(0x4169e1); // Royal blue
   botRacket.position.set(0, 1, 4.5);
   // -PI/2 (radians, not degrees — 180 here was being read as ~233° after
   // wrapping) is the angle where this local geometry's face normal ends up
