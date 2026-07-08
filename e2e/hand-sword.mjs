@@ -9,6 +9,10 @@
  *       npm run dev:server & npm run dev:host & npm run dev:hand-sword &
  *
  * Run: npm run test:hand-sword
+ * Under a degraded network scenario (see network-conditions.mjs) and/or a
+ * larger timeout budget: NETWORK_SCENARIO=poor E2E_TIMEOUT_MS=45000 npm run test:hand-sword
+ * (the matrix.mjs orchestrator sets both of these automatically per scenario,
+ * including the matching server-side SIMULATE_LATENCY_MS)
  *
  * Drives two independent browser contexts through: joining the hub,
  * launching hand-sword in 1v1 Online mode, both players readying up,
@@ -18,10 +22,13 @@
  */
 import { mkdirSync } from 'fs';
 import { chromium } from 'playwright-core';
+import { applyNetworkCondition, getScenario } from './network-conditions.mjs';
 
 mkdirSync('screenshots', { recursive: true });
 
 const log = (label, ...args) => console.log(`[${label}]`, ...args);
+const TIMEOUT = Number(process.env.E2E_TIMEOUT_MS) || 15000;
+const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
 
 (async () => {
   const browser = await chromium.launch({
@@ -39,6 +46,9 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
 
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
+  await applyNetworkCondition(pageA, SCENARIO);
+  await applyNetworkCondition(pageB, SCENARIO);
+  log('setup', `network scenario: ${SCENARIO.label} (timeout budget ${TIMEOUT}ms)`);
 
   pageA.on('console', (msg) => log('A:console', msg.text()));
   pageB.on('console', (msg) => log('B:console', msg.text()));
@@ -53,27 +63,27 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   await pageA.goto('http://localhost:5151');
   await pageB.goto('http://localhost:5151');
 
-  await pageA.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: 15000 });
-  await pageB.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: 15000 });
+  await pageA.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: TIMEOUT });
+  await pageB.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: TIMEOUT });
   log('hub', 'both windows show the 1v1 Online button');
 
   await pageA.screenshot({ path: 'screenshots/hs-01-hub-A.png' });
 
   await pageA.click('button[data-game-id="hand-sword"][data-mode="multiplayer"]');
   log('A', 'clicked 1v1 Online');
-  await pageA.waitForSelector('#play-btn', { timeout: 20000 });
+  await pageA.waitForSelector('#play-btn', { timeout: TIMEOUT });
   await pageA.screenshot({ path: 'screenshots/hs-02-A-loaded.png' });
 
   await pageB.click('button[data-game-id="hand-sword"][data-mode="multiplayer"]');
   log('B', 'clicked 1v1 Online');
-  await pageB.waitForSelector('#play-btn', { timeout: 20000 });
+  await pageB.waitForSelector('#play-btn', { timeout: TIMEOUT });
 
   // Click "Play" (the gesture-bound ready signal) in A first, confirm it shows "Waiting for opponent"
   await pageA.click('#play-btn');
   log('A', 'clicked Play (ready)');
   await pageA.waitForFunction(
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Waiting'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   await pageA.screenshot({ path: 'screenshots/hs-03-A-waiting.png' });
   log('A', 'showing Waiting for opponent — OK');
@@ -84,11 +94,11 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
 
   await pageA.waitForFunction(
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Starting in'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   await pageB.waitForFunction(
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Starting in'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('both', 'showing synchronized countdown — OK');
   await pageA.screenshot({ path: 'screenshots/hs-04-A-countdown.png' });
@@ -97,11 +107,11 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   // Wait for countdown to finish (overlay hides once playing starts)
   await pageA.waitForFunction(
     () => document.getElementById('multiplayer-overlay')?.classList.contains('hidden'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   await pageB.waitForFunction(
     () => document.getElementById('multiplayer-overlay')?.classList.contains('hidden'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('both', 'countdown finished, overlay hidden — match is playing on both');
   await pageA.screenshot({ path: 'screenshots/hs-05-A-playing.png' });
@@ -111,8 +121,8 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   // (score/combo are live-binding module exports in game-logic.js — not
   // reachable/reassignable from outside that module — so this test verifies
   // the panel wiring rather than faking a specific score value).
-  await pageA.waitForSelector('#opponent-panel:not(.hidden)', { timeout: 5000 });
-  await pageB.waitForSelector('#opponent-panel:not(.hidden)', { timeout: 5000 });
+  await pageA.waitForSelector('#opponent-panel:not(.hidden)', { timeout: TIMEOUT });
+  await pageB.waitForSelector('#opponent-panel:not(.hidden)', { timeout: TIMEOUT });
   log('both', 'opponent panel visible on both sides — OK');
 
   await new Promise((r) => setTimeout(r, 2000));
@@ -128,7 +138,7 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
       const t = document.getElementById('multiplayer-status-text')?.textContent || '';
       return t.includes('Win') || t.includes('Ended');
     },
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   ).catch(async (e) => {
     const text = await pageB.evaluate(() => document.getElementById('multiplayer-status-text')?.textContent);
     log('B', 'FAILED waiting for ended state, current text:', text);

@@ -3,6 +3,7 @@ import { HandSwordRoom } from './rooms/HandSwordRoom.js';
 import { TennisRoom } from './rooms/TennisRoom.js';
 
 const port = Number(process.env.PORT) || 2567;
+const simulatedLatencyMs = Number(process.env.SIMULATE_LATENCY_MS) || 0;
 
 const gameServer = new Server();
 
@@ -11,5 +12,17 @@ const gameServer = new Server();
 gameServer.define('hand-sword', HandSwordRoom);
 gameServer.define('tennis', TennisRoom);
 
-gameServer.listen(port);
-console.log(`[server] Colyseus listening on ws://localhost:${port}`);
+// listen() sets up gameServer.transport internally — simulateLatency()
+// needs that to already exist, so it must run after listen() resolves,
+// not before.
+await gameServer.listen(port);
+
+// Artificial round-trip latency for testing sync/reconciliation under
+// degraded network conditions — set SIMULATE_LATENCY_MS=200 (for example)
+// before starting the server. See e2e/network-conditions.mjs and
+// e2e/matrix.mjs, which drive this automatically across a scenario matrix.
+if (simulatedLatencyMs > 0) {
+  gameServer.simulateLatency(simulatedLatencyMs);
+}
+
+console.log(`[server] Colyseus listening on ws://localhost:${port}${simulatedLatencyMs > 0 ? ` (simulating ${simulatedLatencyMs}ms RTT)` : ''}`);

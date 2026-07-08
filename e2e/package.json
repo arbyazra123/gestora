@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test:hand-sword": "node hand-sword.mjs",
-    "test:tennis": "node tennis.mjs"
+    "test:tennis": "node tennis.mjs",
+    "test:matrix": "node matrix.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.61.1"

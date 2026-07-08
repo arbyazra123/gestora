@@ -9,6 +9,10 @@
  *       npm run dev:server & npm run dev:host & npm run dev:tennis &
  *
  * Run: npm run test:tennis
+ * Under a degraded network scenario (see network-conditions.mjs) and/or a
+ * larger timeout budget: NETWORK_SCENARIO=poor E2E_TIMEOUT_MS=45000 npm run test:tennis
+ * (the matrix.mjs orchestrator sets both of these automatically per scenario,
+ * including the matching server-side SIMULATE_LATENCY_MS)
  *
  * Drives two independent browser contexts through: joining the hub,
  * launching tennis in 1v1 Online mode, both players pressing SPACE to
@@ -24,10 +28,13 @@
  */
 import { mkdirSync } from 'fs';
 import { chromium } from 'playwright-core';
+import { applyNetworkCondition, getScenario } from './network-conditions.mjs';
 
 mkdirSync('screenshots', { recursive: true });
 
 const log = (label, ...args) => console.log(`[${label}]`, ...args);
+const TIMEOUT = Number(process.env.E2E_TIMEOUT_MS) || 15000;
+const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
 
 (async () => {
   const browser = await chromium.launch({
@@ -42,6 +49,9 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
 
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
+  await applyNetworkCondition(pageA, SCENARIO);
+  await applyNetworkCondition(pageB, SCENARIO);
+  log('setup', `network scenario: ${SCENARIO.label} (timeout budget ${TIMEOUT}ms)`);
 
   pageA.on('console', (msg) => log('A:console', msg.text()));
   pageB.on('console', (msg) => log('B:console', msg.text()));
@@ -52,19 +62,19 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   await pageA.goto('http://localhost:5151');
   await pageB.goto('http://localhost:5151');
 
-  await pageA.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: 15000 });
-  await pageB.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: 15000 });
+  await pageA.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: TIMEOUT });
+  await pageB.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: TIMEOUT });
   log('hub', 'both windows show tennis 1v1 Online button');
 
   await pageA.click('button[data-game-id="tennis"][data-mode="multiplayer"]');
   await pageB.click('button[data-game-id="tennis"][data-mode="multiplayer"]');
   log('both', 'clicked 1v1 Online');
 
-  await pageA.waitForSelector('#status-display', { timeout: 20000 });
-  await pageB.waitForSelector('#status-display', { timeout: 20000 });
+  await pageA.waitForSelector('#status-display', { timeout: TIMEOUT });
+  await pageB.waitForSelector('#status-display', { timeout: TIMEOUT });
   await pageA.waitForFunction(
     () => document.getElementById('status-display')?.textContent?.includes('SPACE'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('both', 'game loaded, showing Press SPACE prompt');
   await pageA.screenshot({ path: 'screenshots/tn-01-A-prompt.png' });
@@ -76,7 +86,7 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   log('A', 'pressed SPACE');
   await pageA.waitForFunction(
     () => document.getElementById('status-display')?.textContent?.includes('Waiting'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('A', 'showing Waiting for opponent — OK');
 
@@ -87,11 +97,11 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   // Both should see a synchronized countdown next
   await pageA.waitForFunction(
     () => /^[123]$/.test(document.getElementById('status-display')?.textContent?.trim() || ''),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   await pageB.waitForFunction(
     () => /^[123]$/.test(document.getElementById('status-display')?.textContent?.trim() || ''),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('both', 'showing synchronized countdown — OK');
   await pageA.screenshot({ path: 'screenshots/tn-02-A-countdown.png' });
@@ -102,7 +112,7 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   // timeout — still calls completePlayerServe() with power=MIN, which
   // still legally clears the net (serveBall()'s own back-solve guarantees
   // that regardless of power) and gets reported to the server.
-  await new Promise((r) => setTimeout(r, 3500));
+  await new Promise((r) => setTimeout(r, Math.max(3500, TIMEOUT * 0.25)));
   const [aText, bText] = await Promise.all([
     pageA.evaluate(() => document.getElementById('status-display')?.textContent),
     pageB.evaluate(() => document.getElementById('status-display')?.textContent)
@@ -118,7 +128,7 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
       const t = document.getElementById('status-display')?.textContent || '';
       return t.includes('Point');
     },
-    { timeout: 20000 }
+    { timeout: TIMEOUT }
   );
   log('A', 'saw a point resolve — OK, full serve->physics->scoring round-trip worked');
   await pageA.screenshot({ path: 'screenshots/tn-04-A-point.png' });
@@ -143,7 +153,7 @@ const log = (label, ...args) => console.log(`[${label}]`, ...args);
   log('A', 'closed context (simulating disconnect)');
   await pageB.waitForFunction(
     () => document.getElementById('status-display')?.textContent?.includes('disconnected'),
-    { timeout: 10000 }
+    { timeout: TIMEOUT }
   );
   log('B', 'received opponent-disconnected state — OK, no crash');
   await pageB.screenshot({ path: 'screenshots/tn-05-B-disconnected.png' });
