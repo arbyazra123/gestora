@@ -1,0 +1,104 @@
+# Full dev stack: host + every game + the multiplayer server, all as
+# separate containers sharing one image, plus Prometheus + Grafana.
+# Solves the "kill stray ports one by one with lsof" problem — everything
+# starts and stops together (or individually by name), correctly, every
+# time.
+#
+# Usage (from this directory):
+#   docker compose up -d --build        # everything
+#   docker compose up -d host server hand-sword   # just these
+#   docker compose down                 # stop + remove everything cleanly
+#
+# First run (or after adding a dependency) needs --build to pick up
+# package.json changes — node_modules is baked in at build time, not
+# reinstalled on every container start (see Dockerfile's comment on why).
+#
+# Simulate network latency on the server: SIMULATE_LATENCY_MS=100 docker compose up -d
+
+# Pinned explicitly — Compose otherwise defaults the project name to this
+# directory's basename ("docker"), which can collide with an unrelated
+# project that also happens to keep its compose file in a dir named
+# "docker" (containers/networks/volumes are namespaced by project name).
+name: motion-platform
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  working_dir: /app
+  volumes:
+    - ..:/app
+    - node_modules_root:/app/node_modules
+    - node_modules_host:/app/host/node_modules
+    - node_modules_hand_sword:/app/games/hand-sword/node_modules
+    - node_modules_tennis:/app/games/tennis/node_modules
+    - node_modules_pong:/app/games/pong/node_modules
+    - node_modules_server:/app/server/node_modules
+
+services:
+  # Vite's dev server only binds 127.0.0.1 by default — invisible to the
+  # container's port mapping unless told to listen on all interfaces, so
+  # each command below adds `-- --host 0.0.0.0` on top of the root
+  # dev:<name> script (native `npm run dev` outside Docker is unaffected).
+  host:
+    <<: *app
+    command: sh -c "cd host && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5151:5151"
+
+  hand-sword:
+    <<: *app
+    command: sh -c "cd games/hand-sword && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5001:5001"
+
+  tennis:
+    <<: *app
+    command: sh -c "cd games/tennis && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5002:5002"
+
+  pong:
+    <<: *app
+    command: sh -c "cd games/pong && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5003:5003"
+
+  server:
+    <<: *app
+    command: npm run dev:server
+    ports:
+      - "2567:2567"
+    environment:
+      - SIMULATE_LATENCY_MS=${SIMULATE_LATENCY_MS:-0}
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - server
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Local dev only — skips the forced password-change flow on first
+      # admin/admin login. Do not carry this into a real deployment.
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  node_modules_root:
+  node_modules_host:
+  node_modules_hand_sword:
+  node_modules_tennis:
+  node_modules_pong:
+  node_modules_server:

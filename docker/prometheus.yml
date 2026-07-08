@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: motion-platform-server
+    static_configs:
+      # Docker Compose's built-in DNS resolves service names on the same
+      # network — the server is now a container too (unlike monitoring/'s
+      # old setup, which scraped a host-run process via host.docker.internal).
+      - targets: ["server:2567"]
+    metrics_path: /metrics

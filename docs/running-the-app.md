@@ -38,6 +38,36 @@ npm run dev:server      # Multiplayer server (Colyseus) — ws://localhost:2567
 
 The host dynamically loads whichever games are running via Module Federation, so `dev:host` alone is enough to browse the hub, but a game only actually launches if its own dev server is also running.
 
+### Run everything in Docker (recommended if you're juggling ports)
+
+If native `npm run dev` leaves you tracking down stray processes with `lsof -ti:PORT | xargs kill` every time you switch tasks, use the containerized stack instead — one command starts (or stops) all 7 services together, or any subset by name, with no manual process management:
+
+```bash
+cd docker
+docker compose up -d --build   # first run, or after a package.json change
+docker compose up -d           # subsequent runs (no rebuild needed)
+```
+
+This starts host, hand-sword, tennis, pong, the multiplayer server, Prometheus, and Grafana — same ports as the native setup (5151/5001/5002/5003/2567), plus 9090 and 3000 for monitoring (see below). Bring up a subset the same way native `dev:*` scripts work individually:
+
+```bash
+docker compose up -d host hand-sword server   # just these three
+```
+
+Simulate server-side network latency without touching env files:
+
+```bash
+SIMULATE_LATENCY_MS=100 docker compose up -d server
+```
+
+Stop everything cleanly:
+
+```bash
+docker compose down
+```
+
+Source lives in `docker/` (a bind mount, so edits on the host are picked up live — no rebuild needed unless a `package.json` changed). See `docker/docker-compose.yml` for the full service list.
+
 ### Ports
 
 | Service | Port | Protocol |
@@ -72,18 +102,16 @@ Covers: default Node.js process metrics (event-loop lag, memory, CPU, GC — fre
 
 ### Dashboard (Prometheus + Grafana)
 
-A ready-to-run local stack lives in `monitoring/` — Prometheus scrapes the `/metrics` endpoint above, Grafana visualizes it with a pre-built dashboard (7 panels: active rooms, connected clients, tick overrun rate, tick duration percentiles, client RTT percentiles, event-loop lag, memory). Nothing to configure by hand — both the Prometheus scrape target and the Grafana dashboard/datasource are provisioned from files in this repo.
+Prometheus + Grafana are part of the same `docker/` stack described above — Prometheus scrapes the server's `/metrics` endpoint, Grafana visualizes it with a pre-built dashboard (7 panels: active rooms, connected clients, tick overrun rate, tick duration percentiles, client RTT percentiles, event-loop lag, memory). Nothing to configure by hand — both the Prometheus scrape target and the Grafana dashboard/datasource are provisioned from files in this repo.
 
 ```bash
-cd monitoring
-docker compose up -d
+cd docker
+docker compose up -d prometheus grafana server   # or just `docker compose up -d` for the full stack
 ```
 
-Then open **http://localhost:3000** (login `admin` / `admin`) → the "motion-platform — multiplayer server" dashboard is already there. Prometheus itself is at **http://localhost:9090** if you want to run raw PromQL queries.
+Then open **http://localhost:3000** (login `admin` / `admin`) → the "motion-platform — multiplayer server" dashboard is already there. Prometheus itself is at **http://localhost:9090** if you want to run raw PromQL queries. Since the server runs as a container on the same Docker network here (not on the host), Prometheus reaches it via the service name `server:2567` — see `docker/prometheus.yml`.
 
-Requires the Colyseus server to already be running (`npm run dev:server` from the repo root) — Prometheus reaches it via `host.docker.internal:2567`, since the game server runs on the host, not in a container. Tear down with `docker compose down` from `monitoring/`.
-
-This is deliberately the "simple but scalable" version — no auth hardening, no persistent Grafana storage (dashboards are provisioned from `monitoring/grafana/dashboards/*.json`, not clicked together, so nothing is lost between `docker compose down`/`up`), not meant to be exposed beyond localhost. See `docs/network-simulation-metrics.md` for what this covers and what's still a gap (e.g. reconciliation/patch-bandwidth metrics, `perf_hooks.monitorEventLoopDelay()`).
+Tear down with `docker compose down` from `docker/`. This is deliberately the "simple but scalable" version — no auth hardening, no persistent Grafana storage (dashboards are provisioned from `docker/grafana/dashboards/*.json`, not clicked together, so nothing is lost between `docker compose down`/`up`), not meant to be exposed beyond localhost. See `docs/network-simulation-metrics.md` for what this covers and what's still a gap (e.g. reconciliation/patch-bandwidth metrics, `perf_hooks.monitorEventLoopDelay()`).
 
 ## Production build
 
