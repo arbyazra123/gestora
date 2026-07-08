@@ -1,0 +1,143 @@
+{
+  "title": "motion-platform — multiplayer server",
+  "uid": "motion-platform-server",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active rooms",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "colyseus_rooms_active", "legendFormat": "{{room}}" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "none", "colorMode": "value" }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Connected clients",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "colyseus_clients_connected", "legendFormat": "{{room}}" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "none", "colorMode": "value" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tick overrun rate (tennis)",
+      "description": "Simulation ticks exceeding the 16.6ms (60Hz) budget, per second.",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(colyseus_room_tick_overruns_total[5m])) by (room)", "legendFormat": "{{room}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 0.1 },
+            { "color": "red", "value": 1 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area", "colorMode": "value" }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tick duration — tennis (p50 / p95 / p99)",
+      "description": "Server-side simulation tick wall-clock time. The dashed line at 16.6ms is the 60Hz budget.",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(colyseus_room_tick_duration_seconds_bucket[1m])) by (le, room))", "legendFormat": "p50 {{room}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(colyseus_room_tick_duration_seconds_bucket[1m])) by (le, room))", "legendFormat": "p95 {{room}}" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(colyseus_room_tick_duration_seconds_bucket[1m])) by (le, room))", "legendFormat": "p99 {{room}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "pointSize": 4 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Client RTT — room.ping() (p50 / p95)",
+      "description": "Real round-trip time reported by each connected client, per game.",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(colyseus_client_rtt_seconds_bucket[1m])) by (le, room))", "legendFormat": "p50 {{room}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(colyseus_client_rtt_seconds_bucket[1m])) by (le, room))", "legendFormat": "p95 {{room}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "pointSize": 4 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Event loop lag (p50 / p99)",
+      "description": "Node's own event-loop delay — the real bottleneck signal, since Colyseus runs single-threaded on the event loop.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "nodejs_eventloop_lag_p50_seconds", "legendFormat": "p50" },
+        { "refId": "B", "expr": "nodejs_eventloop_lag_p99_seconds", "legendFormat": "p99" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "pointSize": 4 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Memory",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes", "legendFormat": "RSS" },
+        { "refId": "B", "expr": "nodejs_heap_size_used_bytes", "legendFormat": "Heap used" },
+        { "refId": "C", "expr": "nodejs_heap_size_total_bytes", "legendFormat": "Heap total" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "pointSize": 4 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

@@ -108,7 +108,7 @@ Raw per-run JSON: `e2e/metrics/summary.json`.
 
 Our test harness measures wall-clock timing from outside the browser and server. It doesn't (and can't, from that vantage point) see several categories production teams actually monitor. Compiled from Colyseus's own docs/source and how comparable platforms (Nakama, Agones) and general Node.js practice handle this — sourced, not guessed.
 
-**Update:** a first pass at closing some of these gaps has since shipped — see `server/src/metrics.js` and `docs/running-the-app.md`'s Monitoring section. A `prom-client`-based `/metrics` endpoint now exposes default Node.js process metrics, active rooms/connected clients, tennis's per-tick duration + overrun count, and real client-reported RTT via `room.ping()`. Items below are marked ✅ where this closes the gap, 🔲 where it's still open.
+**Update:** a first pass at closing some of these gaps has since shipped — see `server/src/metrics.js` and `docs/running-the-app.md`'s Monitoring section. A `prom-client`-based `/metrics` endpoint now exposes default Node.js process metrics, active rooms/connected clients, tennis's per-tick duration + overrun count, and real client-reported RTT via `room.ping()` — visualized in a provisioned Prometheus + Grafana stack (`monitoring/`, `docker compose up -d`). Items below are marked ✅ where this closes the gap, 🔲 where it's still open.
 
 ### 1 — Core network layer: RTT, jitter, packet loss
 
@@ -158,7 +158,7 @@ Our test harness measures wall-clock timing from outside the browser and server.
 
 1. **Ship the asset-loading fix first.** It's the largest number in this report (75s) and the easiest to act on independently of multiplayer. *(still open)*
 2. ✅ ~~Add Colyseus's built-in `room.ping()`/`client.getLatency()` to the client~~ — **done**: `MultiplayerService.getLatency()` polls RTT every 5s and reports it to `/metrics`. Still open: surfacing it in an actual in-game "connection quality" indicator (the plumbing exists, the UI doesn't yet).
-3. ✅ ~~Instrument server tick timing~~ — **partially done**: tennis's tick duration + overrun count are in `/metrics`. Still open: `perf_hooks.monitorEventLoopDelay()` for the underlying event-loop-lag signal, and a real dashboard (Prometheus + Grafana) rather than raw `curl`.
+3. ✅ ~~Instrument server tick timing + build a real dashboard~~ — **done**: tennis's tick duration + overrun count are in `/metrics`, and `monitoring/` now has a provisioned Prometheus + Grafana stack (`docker compose up -d`, see `docs/running-the-app.md`) with a 7-panel dashboard — verified rendering real data from actual matches. Still open: `perf_hooks.monitorEventLoopDelay()` specifically (default `prom-client` metrics cover the same signal via `nodejs_eventloop_lag_*`, already on the dashboard, so this is now a nice-to-have rather than a real gap).
 4. **Treat 600ms+ countdown skew as a UX question, not just a metric** — decide deliberately whether the game should visually compensate (e.g., start the countdown animation from each client's own message-received time rather than a shared instant) or accept it as within tolerance for a casual game. *(still open)*
 
 ## Sources

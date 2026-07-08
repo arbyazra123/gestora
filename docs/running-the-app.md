@@ -70,7 +70,20 @@ curl http://localhost:2567/metrics
 
 Covers: default Node.js process metrics (event-loop lag, memory, CPU, GC — free from `prom-client`), active rooms/connected clients per game, tennis's per-tick simulation duration + overrun count, and real client-reported RTT (fed by each client's own `room.ping()`, polled every 5s — see `MultiplayerService.js`'s `getLatency()`).
 
-To actually visualize this (not just curl it), point any Prometheus instance at that endpoint — nothing in the instrumentation needs to change to scale from "curl it locally" up to a real Prometheus + Grafana setup later. See `docs/network-simulation-metrics.md` for what this does and doesn't cover (e.g. reconciliation/patch-bandwidth metrics are still a known gap).
+### Dashboard (Prometheus + Grafana)
+
+A ready-to-run local stack lives in `monitoring/` — Prometheus scrapes the `/metrics` endpoint above, Grafana visualizes it with a pre-built dashboard (7 panels: active rooms, connected clients, tick overrun rate, tick duration percentiles, client RTT percentiles, event-loop lag, memory). Nothing to configure by hand — both the Prometheus scrape target and the Grafana dashboard/datasource are provisioned from files in this repo.
+
+```bash
+cd monitoring
+docker compose up -d
+```
+
+Then open **http://localhost:3000** (login `admin` / `admin`) → the "motion-platform — multiplayer server" dashboard is already there. Prometheus itself is at **http://localhost:9090** if you want to run raw PromQL queries.
+
+Requires the Colyseus server to already be running (`npm run dev:server` from the repo root) — Prometheus reaches it via `host.docker.internal:2567`, since the game server runs on the host, not in a container. Tear down with `docker compose down` from `monitoring/`.
+
+This is deliberately the "simple but scalable" version — no auth hardening, no persistent Grafana storage (dashboards are provisioned from `monitoring/grafana/dashboards/*.json`, not clicked together, so nothing is lost between `docker compose down`/`up`), not meant to be exposed beyond localhost. See `docs/network-simulation-metrics.md` for what this covers and what's still a gap (e.g. reconciliation/patch-bandwidth metrics, `perf_hooks.monitorEventLoopDelay()`).
 
 ## Production build
 
