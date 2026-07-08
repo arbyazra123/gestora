@@ -24,7 +24,7 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    minify: 'terser',
+    minify: 'oxc',
     cssCodeSplit: true,
     rollupOptions: {
       output: {

@@ -35,6 +35,7 @@ lerna-debug.log*
 coverage/
 /cypress/videos/
 /cypress/screenshots/
+/e2e/screenshots/
 .nyc_output
 
 # Editor / IDE configuration

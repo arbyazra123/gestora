@@ -60,8 +60,9 @@ class GameManager {
    * Load and start a game with manifest object
    * @param {string} gameId - Game identifier
    * @param {object} manifest - Game manifest object
+   * @param {object} options - Launch options (e.g. { multiplayer: true })
    */
-  async loadGameWithManifest(gameId, manifest) {
+  async loadGameWithManifest(gameId, manifest, options = {}) {
     const startTime = performance.now();
     console.log(`[GameManager] Loading "${gameId}"...`);
 
@@ -83,6 +84,7 @@ class GameManager {
         `[GameManager] Switching tracking type to "${trackingType}" requires a reload — resuming "${gameId}" after reload`
       );
       sessionStorage.setItem('motion-platform:pending-game', gameId);
+      sessionStorage.setItem('motion-platform:pending-game-multiplayer', String(!!options.multiplayer));
       window.location.reload();
       return;
     }
@@ -121,7 +123,8 @@ class GameManager {
         {
           mediaPipe: mediaPipeService,
           camera: cameraService,
-          multiplayer: multiplayerService
+          multiplayer: multiplayerService,
+          launchOptions: { multiplayer: !!options.multiplayer }
         }
       );
 
@@ -154,9 +157,10 @@ class GameManager {
       return await import(`@games/${gameId}/src/index.js`);
     }
 
-    // Production mode - import from remote entry
-    // This would use Module Federation runtime
-    const remoteEntry = manifest.remoteEntry || manifest.production;
+    // Production mode - import from remote entry via Module Federation.
+    // Prefer the deployed URL; remoteEntry is the localhost dev fallback
+    // and would 404 in a real deployment.
+    const remoteEntry = manifest.production || manifest.remoteEntry;
     return await import(/* @vite-ignore */ remoteEntry);
   }
 

@@ -140,7 +140,7 @@ function returnToCenter(deltaTime) {
   botState.isReacting = false;
 }
 
-function updateRacketOrientation() {
+export function updateRacketOrientation() {
   // Nudge the racket's resting tilt towards the ball, rather than replacing it outright:
   // the racket's face normal is the group's local Y axis (see scene.js createBotRacket),
   // not Z, so treating direction.z as a "forward" axis here produced huge, flipped angles

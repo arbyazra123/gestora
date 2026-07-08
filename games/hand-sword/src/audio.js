@@ -316,9 +316,23 @@ export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty) {
 }
 
 // Audio control functions
-export async function startAudio() {
-  await Tone.start(); // Start Tone.js audio context
 
+/**
+ * Unlock the browser's audio context. Must be called synchronously within
+ * a user-gesture call chain (e.g. a click handler) — browsers only honor
+ * the autoplay-gesture exemption for a short time after the original
+ * gesture, so this is split from beginPlayback() below, which multiplayer
+ * mode defers to a server-synchronized start time after a network round-trip.
+ */
+export async function unlockAudioContext() {
+  await Tone.start();
+}
+
+/**
+ * Start the beat/transport clock. Not gesture-gated, safe to call later
+ * (e.g. from a setTimeout once a synchronized start epoch arrives).
+ */
+export function beginPlayback() {
   if (!isAudioPlaying) {
     isAudioPlaying = true;
     beatCounter = 0;
@@ -328,6 +342,11 @@ export async function startAudio() {
 
     Tone.Transport.start();
   }
+}
+
+export async function startAudio() {
+  await unlockAudioContext();
+  beginPlayback();
 }
 
 export function pauseAudio() {

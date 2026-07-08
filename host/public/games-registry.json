@@ -1,0 +1,52 @@
+[
+  {
+    "id": "hand-sword",
+    "name": "Hand Sword Rhythm",
+    "description": "Slice boxes to the beat with your hands",
+    "thumbnail": "/games/hand-sword/thumb.jpg",
+    "tags": ["rhythm", "music", "action"],
+    "players": "1-2",
+    "status": "available",
+    "manifest": {
+      "id": "hand-sword",
+      "name": "Hand Sword Rhythm",
+      "remoteEntry": "http://localhost:5001/assets/remoteEntry.js",
+      "production": "https://cdn.yourdomain.com/games/hand-sword/remoteEntry.js",
+      "handTracking": { "mode": "dual", "maxHands": 2 },
+      "multiplayer": { "supported": true, "maxPlayers": 2, "modes": ["competitive", "cooperative"] }
+    }
+  },
+  {
+    "id": "tennis",
+    "name": "Motion Tennis",
+    "description": "Play tennis against a bot using hand tracking to control your racket",
+    "thumbnail": "/games/tennis/thumb.jpg",
+    "tags": ["sports", "tennis", "bot"],
+    "players": "1",
+    "status": "available",
+    "manifest": {
+      "id": "tennis",
+      "name": "Motion Tennis",
+      "remoteEntry": "http://localhost:5002/assets/remoteEntry.js",
+      "production": "https://cdn.yourdomain.com/games/tennis/remoteEntry.js",
+      "handTracking": { "mode": "single", "maxHands": 1 },
+      "multiplayer": { "supported": true, "maxPlayers": 2, "modes": ["competitive"] }
+    }
+  },
+  {
+    "id": "pong",
+    "name": "Motion Pong",
+    "description": "Classic pong — move your head left and right to control your paddle, and hold up finger-count gestures to trigger special abilities",
+    "thumbnail": "/games/pong/thumb.jpg",
+    "tags": ["arcade", "pong", "bot"],
+    "players": "1",
+    "status": "coming-soon",
+    "manifest": {
+      "id": "pong",
+      "name": "Motion Pong",
+      "remoteEntry": "http://localhost:5003/assets/remoteEntry.js",
+      "production": "https://cdn.yourdomain.com/games/pong/remoteEntry.js",
+      "tracking": { "type": "tasksVision" }
+    }
+  }
+]

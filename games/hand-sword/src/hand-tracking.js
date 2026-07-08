@@ -55,32 +55,17 @@ export function getFlipped() {
 // Landmark index reference (MediaPipe):
 // 0 = wrist, 5 = index_mcp, 9 = middle_mcp, 17 = pinky_mcp
 // Use wrist -> middle_mcp as main orientation "sword grip"
-function mapHandToSword(landmarks, swordGroup, blade, hilt, smoothedPosition, framesSinceRedetection) {
-  const wrist = landmarks[0];
-  const middleMcp = landmarks[9];
-  const indexMcp = landmarks[5];
-  const pinkyMcp = landmarks[17];
-
+//
+// Pure position/orientation math, shared between the local (smoothed,
+// 60fps) tracking path and the opponent ghost-hand (unsmoothed, ~20fps)
+// rendering path below.
+function computeHandTransform(wrist, middleMcp, indexMcp, pinkyMcp) {
   // Position: use wrist as reference point, normalize to Three.js world space
   // MediaPipe coords: x,y in [0,1] (relative to frame), z relative depth (negative = closer to camera)
   const xMultiplier = isFlipped ? -12 : 12;
   const targetX = (wrist.x - 0.5) * -12;
   const targetY = (wrist.y - 0.6) * -12;
   const targetZ = (wrist.z) * xMultiplier;
-
-  // Adaptive smoothing: extra smooth right after re-detection to prevent teleport
-  let adaptiveSmoothFactor = SMOOTHING;
-  if (framesSinceRedetection < REDETECTION_SMOOTH_FRAMES) {
-    // Interpolate from high smoothing (0.7) down to normal (SMOOTHING)
-    const progress = framesSinceRedetection / REDETECTION_SMOOTH_FRAMES;
-    adaptiveSmoothFactor = 0.7 + (SMOOTHING - 0.7) * progress;
-  }
-
-  smoothedPosition.x = lerp(smoothedPosition.x, targetX, adaptiveSmoothFactor);
-  smoothedPosition.y = lerp(smoothedPosition.y, targetY, adaptiveSmoothFactor);
-  smoothedPosition.z = lerp(smoothedPosition.z, targetZ, adaptiveSmoothFactor);
-
-  swordGroup.position.set(smoothedPosition.x, smoothedPosition.y, smoothedPosition.z);
 
   // Orientation: vector from wrist to middle_mcp becomes "sword direction" (Y axis of blade)
   const xFlip = isFlipped ? 1 : -1;
@@ -101,9 +86,90 @@ function mapHandToSword(landmarks, swordGroup, blade, hilt, smoothedPosition, fr
   const defaultDir = new THREE.Vector3(0, 1, 0);
   const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultDir, dirVector);
 
-  // Smoothing rotation using slerp
-  // Use same adaptive smoothing as position
+  return { targetX, targetY, targetZ, quaternion };
+}
+
+function mapHandToSword(landmarks, swordGroup, blade, hilt, smoothedPosition, framesSinceRedetection) {
+  const wrist = landmarks[0];
+  const middleMcp = landmarks[9];
+  const indexMcp = landmarks[5];
+  const pinkyMcp = landmarks[17];
+
+  const { targetX, targetY, targetZ, quaternion } = computeHandTransform(wrist, middleMcp, indexMcp, pinkyMcp);
+
+  // Adaptive smoothing: extra smooth right after re-detection to prevent teleport
+  let adaptiveSmoothFactor = SMOOTHING;
+  if (framesSinceRedetection < REDETECTION_SMOOTH_FRAMES) {
+    // Interpolate from high smoothing (0.7) down to normal (SMOOTHING)
+    const progress = framesSinceRedetection / REDETECTION_SMOOTH_FRAMES;
+    adaptiveSmoothFactor = 0.7 + (SMOOTHING - 0.7) * progress;
+  }
+
+  smoothedPosition.x = lerp(smoothedPosition.x, targetX, adaptiveSmoothFactor);
+  smoothedPosition.y = lerp(smoothedPosition.y, targetY, adaptiveSmoothFactor);
+  smoothedPosition.z = lerp(smoothedPosition.z, targetZ, adaptiveSmoothFactor);
+
+  swordGroup.position.set(smoothedPosition.x, smoothedPosition.y, smoothedPosition.z);
+
+  // Smoothing rotation using slerp, same adaptive smoothing as position
   swordGroup.quaternion.slerp(quaternion, 1 - adaptiveSmoothFactor);
+}
+
+// ---------- OPPONENT GHOST HAND (multiplayer, cosmetic-only) ----------
+// Opponent data arrives throttled (~20fps) via MultiplayerService's
+// compressHandData() format: { w, m, i, p } wrist/middle/index/pinky
+// [x,y,z] arrays, one entry per detected hand. No smoothing/gap-detection
+// is applied here — that's tuned for local 60fps tracking and isn't
+// needed for a purely cosmetic opponent indicator.
+const GHOST_WORLD_OFFSET_X = 15; // separates the ghost sword from the local play field
+const ghostHandGroups = [];
+
+function toPoint([x, y, z]) {
+  return { x, y, z };
+}
+
+function createGhostSwordGroup(scene) {
+  const group = new THREE.Group();
+
+  const bladeGeo = new THREE.BoxGeometry(0.08, 2, 0.02);
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, transparent: true, opacity: 0.4 });
+  const blade = new THREE.Mesh(bladeGeo, bladeMat);
+
+  const hiltGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8);
+  const hiltMat = new THREE.MeshStandardMaterial({ color: 0x884400, transparent: true, opacity: 0.4 });
+  const hilt = new THREE.Mesh(hiltGeo, hiltMat);
+  hilt.position.y = -1.2;
+
+  group.add(blade, hilt);
+  scene.add(group);
+  return group;
+}
+
+/**
+ * Update (creating on first use) ghost sword groups representing the
+ * opponent's tracked hand(s).
+ * @param {THREE.Scene} scene
+ * @param {Array<{w:number[],m:number[],i:number[],p:number[]}>} compressedHands
+ */
+export function renderGhostHand(scene, compressedHands) {
+  if (!Array.isArray(compressedHands)) return;
+
+  compressedHands.forEach((hand, idx) => {
+    if (!ghostHandGroups[idx]) {
+      ghostHandGroups[idx] = createGhostSwordGroup(scene);
+    }
+    const group = ghostHandGroups[idx];
+
+    const { targetX, targetY, targetZ, quaternion } = computeHandTransform(
+      toPoint(hand.w),
+      toPoint(hand.m),
+      toPoint(hand.i),
+      toPoint(hand.p)
+    );
+
+    group.position.set(targetX + GHOST_WORLD_OFFSET_X, targetY, targetZ);
+    group.quaternion.copy(quaternion);
+  });
 }
 
 // Sword references (set during setup)

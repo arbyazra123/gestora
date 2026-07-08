@@ -130,9 +130,14 @@ function winGame(winner) {
   }
 }
 
-export function getScoreDisplay() {
-  const pScore = gameState.playerScore;
-  const bScore = gameState.botScore;
+/**
+ * @param {{playerScore:number,botScore:number}} scores - defaults to this
+ *   module's own gameState; multiplayer mode passes server-synced scores
+ *   instead, reusing this same deuce/AD label logic without duplicating it.
+ */
+export function getScoreDisplay(scores = gameState) {
+  const pScore = scores.playerScore;
+  const bScore = scores.botScore;
 
   // Handle deuce and advantage
   if (pScore >= 3 && bScore >= 3) {

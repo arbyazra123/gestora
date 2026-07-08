@@ -15,7 +15,7 @@ async function initPlatform() {
     // Create and initialize game hub
     const container = document.getElementById('app');
     const gameHub = new GameHub(container);
-    gameHub.init();
+    await gameHub.init();
 
     console.log('✅ Platform initialized');
     console.log('📊 Performance tracking enabled');

@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "host",
-    "games/*"
+    "games/*",
+    "server"
   ],
   "scripts": {
     "dev": "npm-run-all --parallel dev:*",
@@ -13,10 +14,11 @@
     "dev:hand-sword": "cd games/hand-sword && npm run dev",
     "dev:tennis": "cd games/tennis && npm run dev",
     "dev:pong": "cd games/pong && npm run dev",
+    "dev:server": "cd server && npm run dev",
     "build": "npm-run-all build:*",
     "build:host": "cd host && npm run build",
     "build:games": "cd games/hand-sword && npm run build && cd ../tennis && npm run build && cd ../pong && npm run build",
-    "install:all": "npm install && cd host && npm install && cd ../games/hand-sword && npm install && cd ../tennis && npm install && cd ../pong && npm install"
+    "install:all": "npm install && cd host && npm install && cd ../games/hand-sword && npm install && cd ../tennis && npm install && cd ../pong && npm install && cd ../../server && npm install"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

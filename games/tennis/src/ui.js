@@ -12,6 +12,9 @@ let rallyDisplay;
 let fingerCountDisplay;
 let serveChallengeDisplay;
 
+let isMultiplayerMode = false;
+let countdownIntervalId = null;
+
 export function setupUI(container) {
   // Create UI overlay container
   uiOverlay = document.createElement('div');
@@ -52,7 +55,7 @@ export function setupUI(container) {
     </div>
     <div style="font-size: 32px; opacity: 0.5;">:</div>
     <div style="text-align: center;">
-      <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">BOT</div>
+      <div id="bot-label" style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">BOT</div>
       <div id="bot-score">0</div>
     </div>
   `;
@@ -266,9 +269,52 @@ export function hideStatus() {
   statusDisplay.style.display = 'none';
 }
 
+/**
+ * Switches the score panel's "BOT" label to "OPPONENT" and makes
+ * showGameOver()/showPointWinner() refer to a real opponent instead of the
+ * bot, without needing separate multiplayer-only copies of those functions.
+ */
+export function setMultiplayerMode(enabled) {
+  isMultiplayerMode = enabled;
+  const label = document.getElementById('bot-label');
+  if (label) label.textContent = enabled ? 'OPPONENT' : 'BOT';
+}
+
+function opponentNoun() {
+  return isMultiplayerMode ? 'Opponent' : 'Bot';
+}
+
 export function showGameOver(winner) {
-  const message = winner === 'player' ? '🎉 You Won!' : '😔 Bot Wins!';
-  showStatus(message + '\n\nPress R to restart', 0);
+  const message = winner === 'player' ? '🎉 You Won!' : `😔 ${opponentNoun()} Wins!`;
+  const restartHint = isMultiplayerMode ? '' : '\n\nPress R to restart';
+  showStatus(message + restartHint, 0);
+}
+
+/**
+ * Live countdown (e.g. "3", "2", "1") counting down to a shared,
+ * server-provided epoch timestamp, reusing the existing status display —
+ * mirrors games/hand-sword/src/ui.js's showCountdown().
+ */
+export function showMultiplayerCountdown(startAtEpochMs) {
+  clearMultiplayerCountdown();
+  const tick = () => {
+    const remainingMs = startAtEpochMs - Date.now();
+    if (remainingMs <= 0) {
+      clearMultiplayerCountdown();
+      hideStatus();
+      return;
+    }
+    showStatus(String(Math.ceil(remainingMs / 1000)), 0);
+  };
+  tick();
+  countdownIntervalId = setInterval(tick, 200);
+}
+
+export function clearMultiplayerCountdown() {
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+  }
 }
 
 export function showServePrompt(server) {
@@ -316,7 +362,7 @@ export function hideServeChallenge() {
 }
 
 export function showPointWinner(winner) {
-  const message = winner === 'player' ? 'Point!' : 'Bot Point';
+  const message = winner === 'player' ? 'Point!' : `${opponentNoun()} Point`;
   showStatus(message, 1500);
 }
 
@@ -329,6 +375,7 @@ export function showControls() {
 }
 
 export function cleanupUI() {
+  clearMultiplayerCountdown();
   if (uiOverlay && uiOverlay.parentNode) {
     uiOverlay.parentNode.removeChild(uiOverlay);
   }

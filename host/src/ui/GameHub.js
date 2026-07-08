@@ -5,56 +5,11 @@
 
 import { gameManager } from '../core/GameManager.js';
 
-// Game registry with manifests
-// In development, manifest is inlined for simplicity
-const GAMES = [
-  {
-    id: 'hand-sword',
-    name: 'Hand Sword Rhythm',
-    description: 'Slice boxes to the beat with your hands',
-    thumbnail: '/games/hand-sword/thumb.jpg',
-    manifest: {
-      id: 'hand-sword',
-      name: 'Hand Sword Rhythm',
-      remoteEntry: 'http://localhost:5001/assets/remoteEntry.js',
-      handTracking: { mode: 'dual', maxHands: 2 }
-    },
-    tags: ['rhythm', 'music', 'action'],
-    players: '1-2',
-    status: 'available'
-  },
-  {
-    id: 'tennis',
-    name: 'Motion Tennis',
-    description: 'Play tennis against a bot using hand tracking to control your racket',
-    thumbnail: '/games/tennis/thumb.jpg',
-    manifest: {
-      id: 'tennis',
-      name: 'Motion Tennis',
-      remoteEntry: 'http://localhost:5002/assets/remoteEntry.js',
-      handTracking: { mode: 'single', maxHands: 1 }
-    },
-    tags: ['sports', 'tennis', 'bot'],
-    players: '1',
-    status: 'available'
-  },
-  {
-    id: 'pong',
-    name: 'Motion Pong',
-    description: 'Classic pong — move your head left and right to control your paddle, and hold up finger-count gestures to trigger special abilities',
-    thumbnail: '/games/pong/thumb.jpg',
-    manifest: {
-      id: 'pong',
-      name: 'Motion Pong',
-      remoteEntry: 'http://localhost:5003/assets/remoteEntry.js',
-      tracking: { type: 'tasksVision' }
-    },
-    tags: ['arcade', 'pong', 'bot'],
-    players: '1',
-    status: 'available'
-  }
-  // Future games will be added here
-];
+// Registry URL is a plain static file (see host/public/games-registry.json),
+// not part of the JS bundle — it can be updated/replaced on the deployed
+// host independently of any game's own deploy, without rebuilding or
+// restarting the host.
+const REGISTRY_URL = '/games-registry.json';
 
 export class GameHub {
   constructor(container) {
@@ -62,12 +17,28 @@ export class GameHub {
     this.hubElement = null;
     this.gameContainerElement = null;
     this.isGameActive = false;
+    this.games = [];
+  }
+
+  /**
+   * Fetch the game registry. `cache: 'no-store'` avoids the browser HTTP
+   * cache masking a just-updated registry within the same session.
+   */
+  async loadRegistry() {
+    try {
+      const response = await fetch(REGISTRY_URL, { cache: 'no-store' });
+      this.games = await response.json();
+    } catch (error) {
+      console.error('[GameHub] Failed to load games registry:', error);
+      this.games = [];
+    }
   }
 
   /**
    * Initialize and render the hub
    */
-  init() {
+  async init() {
+    await this.loadRegistry();
     this.render();
     this.attachEventListeners();
     console.log('[GameHub] Initialized');
@@ -76,8 +47,10 @@ export class GameHub {
     // switch (see GameManager.loadGameWithManifest)
     const pendingGameId = sessionStorage.getItem('motion-platform:pending-game');
     if (pendingGameId) {
+      const wantsMultiplayer = sessionStorage.getItem('motion-platform:pending-game-multiplayer') === 'true';
       sessionStorage.removeItem('motion-platform:pending-game');
-      this.loadGame(pendingGameId);
+      sessionStorage.removeItem('motion-platform:pending-game-multiplayer');
+      this.loadGame(pendingGameId, wantsMultiplayer);
     }
   }
 
@@ -93,7 +66,9 @@ export class GameHub {
         </header>
 
         <div class="games-grid">
-          ${GAMES.map(game => this.renderGameCard(game)).join('')}
+          ${this.games.length
+            ? this.games.map(game => this.renderGameCard(game)).join('')
+            : '<p class="games-empty">No games available right now — check back soon.</p>'}
         </div>
 
         <div id="loading-overlay" class="loading-overlay hidden">
@@ -119,8 +94,10 @@ export class GameHub {
    * Render individual game card
    */
   renderGameCard(game) {
+    const isAvailable = game.status === 'available';
+    const supportsMultiplayer = !!game.manifest?.multiplayer?.supported;
     return `
-      <div class="game-card" data-game-id="${game.id}">
+      <div class="game-card ${isAvailable ? '' : 'game-card--disabled'}" data-game-id="${game.id}">
         <div class="game-thumbnail">
           <div class="thumbnail-placeholder">🎮</div>
         </div>
@@ -133,9 +110,12 @@ export class GameHub {
               ${game.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
             </div>
           </div>
-          <button class="play-button" data-game-id="${game.id}">
-            ▶ Play
-          </button>
+          ${isAvailable
+            ? `<button class="play-button" data-game-id="${game.id}" data-mode="solo">▶ Play</button>
+               ${supportsMultiplayer
+                 ? `<button class="play-button play-button--online" data-game-id="${game.id}" data-mode="multiplayer">🌐 1v1 Online</button>`
+                 : ''}`
+            : `<button class="play-button play-button--disabled" disabled>🔒 Coming Soon</button>`}
         </div>
       </div>
     `;
@@ -145,11 +125,11 @@ export class GameHub {
    * Attach event listeners
    */
   attachEventListeners() {
-    // Play button clicks
-    document.querySelectorAll('.play-button').forEach(button => {
+    // Play button clicks (disabled "Coming Soon" buttons have no gameId to load)
+    document.querySelectorAll('.play-button:not(.play-button--disabled)').forEach(button => {
       button.addEventListener('click', (e) => {
-        const gameId = e.target.dataset.gameId;
-        this.loadGame(gameId);
+        const { gameId, mode } = e.target.dataset;
+        this.loadGame(gameId, mode === 'multiplayer');
       });
     });
 
@@ -163,10 +143,10 @@ export class GameHub {
   /**
    * Load and start a game
    */
-  async loadGame(gameId) {
-    const game = GAMES.find(g => g.id === gameId);
-    if (!game) {
-      console.error(`[GameHub] Game "${gameId}" not found`);
+  async loadGame(gameId, wantsMultiplayer = false) {
+    const game = this.games.find(g => g.id === gameId);
+    if (!game || game.status !== 'available') {
+      console.error(`[GameHub] Game "${gameId}" not found or not available`);
       return;
     }
 
@@ -180,7 +160,7 @@ export class GameHub {
       }
 
       // Load the game with inlined manifest
-      await gameManager.loadGameWithManifest(gameId, game.manifest);
+      await gameManager.loadGameWithManifest(gameId, game.manifest, { multiplayer: wantsMultiplayer });
 
       // Hide hub, show game
       this.showGame();
@@ -391,6 +371,38 @@ export class GameHub {
       .play-button:hover {
         transform: scale(1.05);
         box-shadow: 0 5px 20px rgba(0, 255, 255, 0.5);
+      }
+
+      .play-button--online {
+        margin-top: 8px;
+        background: linear-gradient(90deg, #ff00ff, #ffaa00);
+      }
+
+      .game-card--disabled {
+        opacity: 0.5;
+      }
+
+      .game-card--disabled:hover {
+        transform: none;
+        border-color: rgba(0, 255, 255, 0.2);
+        box-shadow: none;
+      }
+
+      .play-button--disabled {
+        background: rgba(255, 255, 255, 0.1);
+        cursor: not-allowed;
+      }
+
+      .play-button--disabled:hover {
+        transform: none;
+        box-shadow: none;
+      }
+
+      .games-empty {
+        grid-column: 1 / -1;
+        text-align: center;
+        color: #aaa;
+        padding: 40px;
       }
 
       .loading-overlay {

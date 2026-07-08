@@ -1,4 +1,4 @@
-import { updateBPM, startAudio, pauseAudio, stopAudio, setTheme, themes, currentBPM } from './audio.js';
+import { updateBPM, startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes, currentBPM } from './audio.js';
 import { setTwoHandMode, setDifficulty, clearAllBoxes, resetScore } from './game-logic.js';
 import { setFlipped, getFlipped, updateHandTrackingMode } from './hand-tracking.js';
 import { resetHealthMeter } from './health-meter.js';
@@ -64,6 +64,19 @@ function createUIOverlay() {
       <div style="position: absolute; bottom: 20px; right: 20px; pointer-events: none;">
         <canvas id="health-meter" width="200" height="150"></canvas>
       </div>
+
+      <!-- Opponent Panel (Top Right) -->
+      <div id="opponent-panel" class="hidden" style="position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none;">
+        <div style="font-size: 1.3em; font-weight: bold; color: #ff00ff; text-shadow: 0 0 10px #ff00ff;">
+          Opponent: <span id="opponent-score-display">0</span>
+        </div>
+        <div id="opponent-combo-display" style="font-size: 1em; color: #00ffff;">Combo: 0x</div>
+      </div>
+
+      <!-- Multiplayer Status Overlay (Center) -->
+      <div id="multiplayer-overlay" class="hidden" style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none;">
+        <div id="multiplayer-status-text" style="font-size: 1.8em; font-weight: bold; color: #00ffff; text-shadow: 0 0 10px #00ffff;"></div>
+      </div>
     </div>
   `;
 
@@ -104,6 +117,11 @@ function injectUIStyles() {
       display: none;
     }
 
+    #multiplayer-overlay.hidden,
+    #opponent-panel.hidden {
+      display: none;
+    }
+
     .control-select {
       padding: 6px;
       background: rgba(0, 0, 0, 0.7);
@@ -123,7 +141,7 @@ function injectUIStyles() {
 }
 
 // ---------- UI SETUP ----------
-export function setupUI(scene, leftSwordGroup, onGameReset) {
+export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions = null) {
   // Create UI overlay if it doesn't exist
   createUIOverlay();
 
@@ -150,6 +168,17 @@ export function setupUI(scene, leftSwordGroup, onGameReset) {
   const resetBtn = document.getElementById('reset-btn');
 
   playBtn.addEventListener('click', async () => {
+    if (multiplayerOptions?.wantsMultiplayer) {
+      // Unlock the audio context now, inside this click's gesture chain —
+      // actual transport start is deferred to the server-synced start
+      // epoch (see beginPlayback(), called later from index.js).
+      await unlockAudioContext();
+      playBtn.disabled = true;
+      playBtn.textContent = '⏳ Ready';
+      multiplayerOptions.onReady();
+      return;
+    }
+
     await startAudio();
     playBtn.classList.add('hidden');
     pauseBtn.classList.remove('hidden');
@@ -264,4 +293,73 @@ export function cleanupUI() {
   if (styles) {
     styles.remove();
   }
+
+  clearCountdownInterval();
+}
+
+// ---------- MULTIPLAYER UI ----------
+let countdownIntervalId = null;
+
+function clearCountdownInterval() {
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+  }
+}
+
+export function showMultiplayerOverlay(statusText) {
+  const overlay = document.getElementById('multiplayer-overlay');
+  const text = document.getElementById('multiplayer-status-text');
+  if (!overlay || !text) return;
+  text.textContent = statusText;
+  overlay.classList.remove('hidden');
+
+  const opponentPanel = document.getElementById('opponent-panel');
+  if (opponentPanel) opponentPanel.classList.remove('hidden');
+}
+
+export function hideMultiplayerOverlay() {
+  const overlay = document.getElementById('multiplayer-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  clearCountdownInterval();
+}
+
+export function showCountdown(startAtEpochMs) {
+  clearCountdownInterval();
+  const tick = () => {
+    const remainingMs = startAtEpochMs - Date.now();
+    if (remainingMs <= 0) {
+      clearCountdownInterval();
+      hideMultiplayerOverlay();
+      return;
+    }
+    showMultiplayerOverlay(`Starting in ${Math.ceil(remainingMs / 1000)}...`);
+  };
+  tick();
+  countdownIntervalId = setInterval(tick, 200);
+}
+
+export function updateOpponentScore(score, combo) {
+  const scoreEl = document.getElementById('opponent-score-display');
+  const comboEl = document.getElementById('opponent-combo-display');
+  if (scoreEl) scoreEl.textContent = score;
+  if (comboEl) comboEl.textContent = `Combo: ${combo}x`;
+}
+
+export function showMatchResult(won) {
+  showMultiplayerOverlay(won ? '🏆 You Win!' : 'Match Ended');
+}
+
+export function lockControls() {
+  ['bpm-slider', 'easy-btn', 'medium-btn', 'hard-btn', 'theme-select', 'reset-btn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+}
+
+export function unlockControls() {
+  ['bpm-slider', 'easy-btn', 'medium-btn', 'hard-btn', 'theme-select', 'reset-btn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
 }

@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import * as Tone from 'tone';
-import { initTheme, setupBeatScheduler, getCurrentBPM, stopAudio } from './audio.js';
+import { initTheme, setupBeatScheduler, getCurrentBPM, stopAudio, setTheme, updateBPM, beginPlayback, currentTheme } from './audio.js';
 import {
   boxes,
   createBox,
@@ -15,8 +15,12 @@ import {
   rightBladeBoundingBox,
   leftBladeBoundingBox,
   getCurrentDifficulty,
+  setDifficulty,
   clearAllBoxes,
-  resetScore
+  resetScore,
+  score,
+  combo,
+  maxCombo
 } from './game-logic.js';
 import { initHealthMeter, resetHealthMeter } from './health-meter.js';
 import { initBackgroundEffects, animateBackgroundEffects, resetBackgroundEffects } from './background-effects.js';
@@ -51,6 +55,14 @@ export default class HandSwordGame {
 
     // Hand tracking module
     this.handTrackingModule = null;
+    this.uiModule = null;
+
+    // Multiplayer state
+    this.wantsMultiplayer = !!services.launchOptions?.multiplayer;
+    this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
+    this._onStateChange = null;
+    this._onOpponentHand = null;
+    this._lastScoreSent = 0;
 
     console.log('[HandSword] Game instance created');
   }
@@ -70,8 +82,9 @@ export default class HandSwordGame {
         import('./ui.js')
       ]);
 
-      // Store hand tracking module reference
+      // Store module references
       this.handTrackingModule = handTrackingModule;
+      this.uiModule = uiModule;
 
       // Initialize Three.js scene with container
       sceneModule.initScene(this.container);
@@ -115,7 +128,20 @@ export default class HandSwordGame {
       );
 
       // Setup UI
-      uiModule.setupUI(this.scene, this.leftSwordGroup);
+      const multiplayerOptions = this.wantsMultiplayer
+        ? { wantsMultiplayer: true, onReady: () => this.handleReady() }
+        : null;
+      uiModule.setupUI(this.scene, this.leftSwordGroup, undefined, multiplayerOptions);
+
+      if (this.wantsMultiplayer) {
+        uiModule.lockControls();
+        uiModule.showMultiplayerOverlay('Click Play when ready!');
+
+        this._onStateChange = (state) => this.handleMatchStateChange(state);
+        this._onOpponentHand = (msg) => this.renderOpponentHand(msg.data);
+        this.multiplayer.on('stateChange', this._onStateChange);
+        this.multiplayer.on('opponentHand', this._onOpponentHand);
+      }
 
       // Initialize health meter
       initHealthMeter();
@@ -215,6 +241,18 @@ export default class HandSwordGame {
     // Unsubscribe from hand tracking
     this.mediaPipe.unsubscribe('hand-sword');
 
+    // Tear down multiplayer — multiplayerService is a singleton reused
+    // across game load/unload cycles, so stale listeners from this match
+    // must not linger into the next one. (cleanupUI() below removes the
+    // whole UI overlay including locked controls, so no separate
+    // unlockControls() call is needed here.)
+    if (this.wantsMultiplayer) {
+      if (this._onStateChange) this.multiplayer.off('stateChange', this._onStateChange);
+      if (this._onOpponentHand) this.multiplayer.off('opponentHand', this._onOpponentHand);
+      this.multiplayer.leaveRoom();
+      this.matchState = 'idle';
+    }
+
     // Clear all boxes
     if (this.scene) {
       clearAllBoxes(this.scene);
@@ -288,6 +326,91 @@ export default class HandSwordGame {
 
     // Render scene
     this.renderer.render(this.scene, this.camera3d);
+
+    // Relay score/combo to the opponent while a match is live
+    if (this.wantsMultiplayer && this.matchState === 'playing') {
+      const now = performance.now();
+      if (now - this._lastScoreSent > 150) {
+        this.multiplayer.sendGameState({ score, combo, maxCombo });
+        this._lastScoreSent = now;
+      }
+    }
+  }
+
+  /**
+   * Called when the player clicks "Play" in multiplayer mode (their audio
+   * context is already unlocked by this point — see ui.js's playBtn
+   * handler). Joins the match room; the server pairs the first two
+   * waiting clients and drives the countdown/start-epoch from there.
+   */
+  async handleReady() {
+    this.matchState = 'connecting';
+    this.uiModule.showMultiplayerOverlay('Connecting...');
+
+    try {
+      await this.multiplayer.connect();
+      await this.multiplayer.joinRoom('hand-sword', {
+        bpm: getCurrentBPM(),
+        difficulty: getCurrentDifficulty(),
+        theme: currentTheme
+      });
+
+      this.matchState = 'waiting';
+      this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
+    } catch (error) {
+      console.error('[HandSword] Failed to join multiplayer match:', error);
+      this.uiModule.showMultiplayerOverlay('Connection failed');
+    }
+  }
+
+  /**
+   * Called on every synced room state change (see MultiplayerService's
+   * 'stateChange' event, wired in init()).
+   */
+  handleMatchStateChange(state) {
+    const myId = this.multiplayer.getPlayerId();
+    const opponent = [...state.players.values()].find((p) => p.sessionId !== myId);
+
+    if (state.status === 'countdown' && this.matchState !== 'countdown' && this.matchState !== 'playing') {
+      this.matchState = 'countdown';
+
+      // Apply the room's locked match settings to the local UI/state —
+      // only when they actually differ. setTheme() re-initializes Tone.js
+      // instruments, which stomps the already-scheduled beat repeat's
+      // internal time bookkeeping if called redundantly (harmless-looking
+      // but throws inside Tone's scheduler once playback starts).
+      if (state.difficulty !== getCurrentDifficulty()) setDifficulty(state.difficulty);
+      if (state.theme !== currentTheme) setTheme(state.theme);
+      if (state.bpm !== getCurrentBPM()) updateBPM(state.bpm);
+
+      this.uiModule.showCountdown(state.startAt);
+
+      const delay = Math.max(0, state.startAt - Date.now());
+      setTimeout(() => {
+        beginPlayback();
+        this.matchState = 'playing';
+      }, delay);
+    }
+
+    if (state.status === 'ended' && this.matchState !== 'ended') {
+      this.matchState = 'ended';
+      const myScore = state.players.get(myId)?.score ?? score;
+      this.uiModule.showMatchResult(myScore >= (opponent?.score ?? 0));
+    }
+
+    if (opponent) {
+      this.uiModule.updateOpponentScore(opponent.score, opponent.combo);
+    }
+  }
+
+  /**
+   * Render the opponent's tracked hand. Kept lightweight/cosmetic —
+   * see hand-tracking.js's renderGhostHand helper.
+   */
+  renderOpponentHand(compressed) {
+    if (this.handTrackingModule?.renderGhostHand) {
+      this.handTrackingModule.renderGhostHand(this.scene, compressed);
+    }
   }
 
   /**
@@ -301,23 +424,4 @@ export default class HandSwordGame {
     }
   }
 
-  /**
-   * Enable multiplayer mode
-   */
-  enableMultiplayer(roomId) {
-    console.log('[HandSword] Enabling multiplayer...');
-
-    if (!this.multiplayer.isConnectedToServer()) {
-      console.warn('[HandSword] Not connected to multiplayer server');
-      return;
-    }
-
-    this.multiplayer.joinRoom(roomId);
-
-    // Listen for opponent hand data
-    this.multiplayer.on('opponentHand', (data) => {
-      // TODO: Render opponent's sword/hands
-      console.log('[HandSword] Opponent hand data received');
-    });
-  }
 }

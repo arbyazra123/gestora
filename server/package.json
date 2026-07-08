@@ -1,0 +1,15 @@
+{
+  "name": "@motion-platform/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "colyseus": "^0.17.10",
+    "@colyseus/schema": "^4.0.24",
+    "three": "^0.185.0"
+  }
+}

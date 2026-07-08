@@ -47,7 +47,8 @@ import {
   getBotHitVelocity,
   setBotDifficulty,
   resetBotState,
-  getBotRacketVelocity
+  getBotRacketVelocity,
+  updateRacketOrientation
 } from './bot-ai.js';
 import {
   resetGame,
@@ -82,7 +83,9 @@ import {
   showServeChallenge,
   updateServeChallengeDisplay,
   hideServeChallenge,
-  cleanupUI
+  cleanupUI,
+  setMultiplayerMode,
+  showMultiplayerCountdown
 } from './ui.js';
 import {
   initAudio,
@@ -132,6 +135,17 @@ export default class TableTennisGame {
 
     // Keyboard controls
     this.keyboardHandler = null;
+
+    // Multiplayer state
+    this.wantsMultiplayer = !!services.launchOptions?.multiplayer;
+    this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
+    this.room = null;
+    this.myRole = null; // 'player' | 'bot' — assigned by the server on join
+    this.latestState = null;
+    this._onStateChange = null;
+    this._lastRoomStatus = null;
+    this._lastGameStatus = null;
+    this._lastRacketSent = 0;
 
     console.log('[Table Tennis] Game instance created');
   }
@@ -184,6 +198,12 @@ export default class TableTennisGame {
       resetGame();
       this.updateUI();
 
+      if (this.wantsMultiplayer) {
+        setMultiplayerMode(true);
+        this._onStateChange = (state) => this.handleMatchStateChange(state);
+        this.multiplayer.on('stateChange', this._onStateChange);
+      }
+
       console.log('[Table Tennis] Initialized successfully');
     } catch (error) {
       console.error('[Table Tennis] Initialization failed:', error);
@@ -216,8 +236,12 @@ export default class TableTennisGame {
     this.keyboardHandler = (event) => {
       if (event.code === 'Space' && !event.repeat && this.awaitingGameStart) {
         this.awaitingGameStart = false;
-        this.runStartCountdown();
-      } else if (event.code === 'KeyR' && isGameOver()) {
+        if (this.wantsMultiplayer) {
+          this.handleReady();
+        } else {
+          this.runStartCountdown();
+        }
+      } else if (event.code === 'KeyR' && !this.wantsMultiplayer && isGameOver()) {
         this.restartGame();
       }
     };
@@ -233,7 +257,7 @@ export default class TableTennisGame {
   promptGameStart() {
     this.awaitingGameStart = true;
     setGestureDetectionEnabled(false);
-    showStatus('Press SPACE to Start', 0);
+    showStatus(this.wantsMultiplayer ? 'Press SPACE to Find Opponent' : 'Press SPACE to Start', 0);
   }
 
   /**
@@ -307,11 +331,244 @@ export default class TableTennisGame {
     const power = MIN_SERVE_POWER + powerRatio * (MAX_SERVE_POWER - MIN_SERVE_POWER);
 
     this.awaitingReturnHit = false;
+    // Every serving client — regardless of assigned server role — always
+    // serves from their own local side (resetBallPosition()'s fixed local
+    // origin), exactly like the original solo player serve. Whichever role
+    // this client was assigned only affects the coordinate mirror applied
+    // when reporting the result to the server below (see mirrorVec()).
     resetBallPosition();
     serveBall(power);
-    startServe();
-    serveComplete();
+
+    if (this.wantsMultiplayer) {
+      this.reportServe();
+    } else {
+      startServe();
+      serveComplete();
+    }
     hideStatus();
+  }
+
+  // ---------- Multiplayer ----------
+
+  /**
+   * Mirrors a {x,y,z} vector through the net (180° rotation about Y):
+   * (x,y,z) -> (-x,y,-z). Self-inverse — used both when translating this
+   * client's local coordinates into the shared server frame, and vice
+   * versa. Only ever applied when this.myRole === 'bot' — see the class
+   * doc comment above for why: every client's hand-tracking always
+   * renders its own paddle in the same "near the camera" local frame, so
+   * whichever client is assigned the far/'bot' side needs this transform
+   * to place their actions on the correct side of the shared court, and
+   * to render the shared ball/opponent paddle back into their own view.
+   */
+  mirrorVec(v) {
+    return { x: -v.x, y: v.y, z: -v.z };
+  }
+
+  toShared(v) {
+    return this.myRole === 'bot' ? this.mirrorVec(v) : v;
+  }
+
+  toLocal(v) {
+    return this.myRole === 'bot' ? this.mirrorVec(v) : v; // self-inverse
+  }
+
+  /**
+   * Translates a server-side role string ('player'/'bot' — whichever side
+   * of the court, from the server's point of view) into this client's own
+   * locally-relative terms, where 'player' always means "me" and 'bot'
+   * always means "my opponent" (since both clients' local game code always
+   * treats itself as 'player' — see hitBall() calls below).
+   */
+  translateRole(serverRole) {
+    return serverRole === this.myRole ? 'player' : 'bot';
+  }
+
+  /**
+   * Send the resulting serve velocity/spin (already computed locally by
+   * serveBall(), reusing the exact same finger-count-challenge-driven
+   * mechanic as solo mode) to the server, which becomes the sole authority
+   * over the ball from this point until the next hit/serve report.
+   */
+  reportServe() {
+    if (!this.room) return;
+    this.room.send('serve', {
+      position: this.toShared({ x: ball.position.x, y: ball.position.y, z: ball.position.z }),
+      velocity: this.toShared({ x: ballState.velocity.x, y: ballState.velocity.y, z: ballState.velocity.z }),
+      spin: this.toShared({ x: ballState.spin.x, y: ballState.spin.y, z: ballState.spin.z })
+    });
+  }
+
+  /**
+   * Same idea as reportServe(), for a rally hit — the resulting velocity
+   * already comes from hitBall()'s existing gesture/smash-aware math,
+   * called exactly as in solo mode.
+   */
+  reportHit() {
+    if (!this.room) return;
+    this.room.send('hit', {
+      velocity: this.toShared({ x: ballState.velocity.x, y: ballState.velocity.y, z: ballState.velocity.z }),
+      spin: this.toShared({ x: ballState.spin.x, y: ballState.spin.y, z: ballState.spin.z })
+    });
+  }
+
+  /**
+   * Broadcast this client's own racket position, throttled to ~20Hz
+   * (matches the throttle MultiplayerService uses elsewhere in this
+   * project) — purely for rendering the opponent's paddle on the other
+   * client; the server doesn't use this for hit validation (see the
+   * trust-model comment in server/src/rooms/TennisRoom.js).
+   */
+  sendRacketPosition() {
+    if (!this.room) return;
+    const now = performance.now();
+    if (now - this._lastRacketSent < 50) return;
+    this._lastRacketSent = now;
+    this.room.send('racket', this.toShared({
+      x: playerRacket.position.x, y: playerRacket.position.y, z: playerRacket.position.z
+    }));
+  }
+
+  /**
+   * Called when the player presses SPACE in multiplayer mode (this key is
+   * already a proven gesture-safe audio-unlock point via setupAudioUnlock()'s
+   * global keydown listener, registered earlier in init() — see that
+   * method's doc comment). Joins the match room; the server pairs the
+   * first two waiting clients and drives the countdown/start-epoch.
+   */
+  async handleReady() {
+    this.matchState = 'connecting';
+    showStatus('Connecting...', 0);
+
+    try {
+      await this.multiplayer.connect();
+      this.room = await this.multiplayer.joinRoom('tennis');
+
+      this.matchState = 'waiting';
+      showStatus('Waiting for opponent...', 0);
+    } catch (error) {
+      console.error('[Table Tennis] Failed to join multiplayer match:', error);
+      showStatus('Connection failed', 0);
+    }
+  }
+
+  /**
+   * Begin whichever side's serve turn it is, in multiplayer terms: reuses
+   * the exact same finger-count challenge as solo mode when it's this
+   * client's own turn (regardless of assigned server role — see
+   * completePlayerServe()'s comment), or just waits when it's the real
+   * opponent's turn.
+   */
+  beginMultiplayerServeTurn() {
+    setGestureDetectionEnabled(true);
+    if (this.translateRole(this.latestState.game.currentServer) === 'player') {
+      this.startPlayerServeChallenge();
+    } else {
+      showStatus('Waiting for opponent to serve...', 0);
+    }
+  }
+
+  /**
+   * Fired on every synced room state change (see MultiplayerService's
+   * 'stateChange' event, wired in init()) — this includes high-frequency
+   * ball/racket position ticks, not just rare status transitions, so
+   * one-shot reactions below are guarded by comparing against the last
+   * seen value rather than assuming this only fires on meaningful edges.
+   */
+  handleMatchStateChange(state) {
+    this.latestState = state;
+
+    if (!this.myRole) {
+      const me = state.players.get(this.multiplayer.getPlayerId());
+      if (me) this.myRole = me.role;
+    }
+    if (!this.myRole) return; // haven't seen our own player entry yet
+
+    // Continuously mirror the server-authoritative ball into this client's
+    // own local frame — checkPlayerRacketCollision()/hitBall() below (and
+    // their solo-mode counterparts) operate on these same `ball`/`ballState`
+    // module singletons unchanged, so this is the only place that needs to
+    // know a network sync is happening at all.
+    const localBallPos = this.toLocal({ x: state.ball.position.x, y: state.ball.position.y, z: state.ball.position.z });
+    ball.position.set(localBallPos.x, localBallPos.y, localBallPos.z);
+    const localBallVel = this.toLocal({ x: state.ball.velocity.x, y: state.ball.velocity.y, z: state.ball.velocity.z });
+    ballState.velocity.set(localBallVel.x, localBallVel.y, localBallVel.z);
+    const localBallSpin = this.toLocal({ x: state.ball.spin.x, y: state.ball.spin.y, z: state.ball.spin.z });
+    ballState.spin.set(localBallSpin.x, localBallSpin.y, localBallSpin.z);
+    ballState.isActive = state.ball.isActive;
+    ballState.lastHitBy = state.ball.lastHitBy ? this.translateRole(state.ball.lastHitBy) : null;
+
+    // Opponent paddle, same local-frame translation, then face it toward
+    // wherever the (also just-synced) ball currently is — reuses bot-ai.js's
+    // existing orientation math unchanged.
+    const myId = this.multiplayer.getPlayerId();
+    const opponent = [...state.players.values()].find((p) => p.sessionId !== myId);
+    if (opponent) {
+      const localRacket = this.toLocal({ x: opponent.racket.x, y: opponent.racket.y, z: opponent.racket.z });
+      botRacket.position.set(localRacket.x, localRacket.y, localRacket.z);
+      updateRacketOrientation();
+    }
+
+    // Score/rally display — cheap and idempotent, no edge-guard needed.
+    const rawScore = getScoreDisplay({ playerScore: state.game.playerScore, botScore: state.game.botScore });
+    const myLabel = this.myRole === 'player' ? rawScore.player : rawScore.bot;
+    const oppLabel = this.myRole === 'player' ? rawScore.bot : rawScore.player;
+    updateScore(myLabel, oppLabel);
+    const myGames = this.myRole === 'player' ? state.game.playerGames : state.game.botGames;
+    const oppGames = this.myRole === 'player' ? state.game.botGames : state.game.playerGames;
+    updateGameScore(myGames, oppGames);
+    updateRallyCount(state.game.rallyCount);
+
+    // One-shot reactions to actual transitions, edge-detected against the
+    // last seen value so they don't re-fire on every unrelated state tick.
+    if (state.status === 'countdown' && this._lastRoomStatus !== 'countdown') {
+      this.matchState = 'countdown';
+      showMultiplayerCountdown(state.startAt);
+      const delay = Math.max(0, state.startAt - Date.now());
+      setTimeout(() => {
+        if (this.matchState !== 'countdown') return; // e.g. match ended during the countdown
+        this.matchState = 'playing';
+      }, delay);
+    }
+
+    if (state.status === 'ended' && this._lastRoomStatus !== 'ended') {
+      this.matchState = 'ended';
+      setGestureDetectionEnabled(false);
+      showStatus('Opponent disconnected', 0);
+    }
+
+    // gameStatus defaults to 'ready' from room creation onward (i.e. before
+    // state.status ever reaches 'playing'), so a plain "gameStatus just
+    // became ready" edge-check alone would get silently consumed during
+    // the waiting/countdown phase — this.​_lastGameStatus would already
+    // equal 'ready' by the time the room is actually live, and the real
+    // first-serve edge would never fire. Two separate edges cover it: the
+    // room's own waiting/countdown -> playing transition (the first serve)
+    // and gameStatus cycling back to 'ready' after a point (every serve
+    // after that, which cleanly passes through 'serving'/'playing'/
+    // 'point-over' in between, so its edge-detection isn't pre-consumed).
+    const justStartedPlaying = state.status === 'playing' && this._lastRoomStatus !== 'playing';
+    const justBecameReadyAgain = state.game.gameStatus === 'ready' && this._lastGameStatus !== 'ready';
+    if (state.status === 'playing' && (justStartedPlaying || justBecameReadyAgain)) {
+      this.beginMultiplayerServeTurn();
+    }
+
+    if (state.game.gameStatus === 'point-over' && this._lastGameStatus !== 'point-over') {
+      const winner = this.translateRole(state.game.lastPointWinner);
+      showPointWinner(winner);
+      if (rawScore.player === 'Deuce') playDeuce();
+      else playPoint(winner);
+    }
+
+    if (state.game.gameStatus === 'game-over' && this._lastGameStatus !== 'game-over') {
+      const finalWinnerServerRole = state.game.playerGames >= 2 ? 'player' : 'bot';
+      const winner = this.translateRole(finalWinnerServerRole);
+      showGameOver(winner);
+      playGameOver(winner);
+    }
+
+    this._lastRoomStatus = state.status;
+    this._lastGameStatus = state.game.gameStatus;
   }
 
   /**
@@ -426,6 +683,16 @@ export default class TableTennisGame {
     // Unsubscribe from hand tracking
     this.mediaPipe.unsubscribe('tennis');
 
+    // Tear down multiplayer — multiplayerService is a singleton reused
+    // across game load/unload cycles, so stale listeners from this match
+    // must not linger into the next one.
+    if (this.wantsMultiplayer) {
+      if (this._onStateChange) this.multiplayer.off('stateChange', this._onStateChange);
+      this.multiplayer.leaveRoom();
+      this.room = null;
+      this.matchState = 'idle';
+    }
+
     // Remove keyboard listener
     if (this.keyboardHandler) {
       window.removeEventListener('keydown', this.keyboardHandler);
@@ -498,6 +765,24 @@ export default class TableTennisGame {
       updateServeChallengeDisplay(getServeChallengeState());
     }
 
+    if (this.wantsMultiplayer) {
+      this.updateMultiplayerGameLogic();
+    } else {
+      this.updateSoloGameLogic(deltaTime);
+      updateRallyCount(getRallyCount());
+    }
+
+    // Update UI (debug readouts — harmless/identical in both modes)
+    updateFingerCount(getCurrentFingerCount());
+    updateSwingDirection(getArmedDirection());
+    updateSmashStatus(isSmashArmed());
+  }
+
+  /**
+   * Solo-mode ball physics + bot AI + both-sides collision checking —
+   * unchanged from the original single-player implementation.
+   */
+  updateSoloGameLogic(deltaTime) {
     // Update ball physics
     if (isBallActive()) {
       updateBall(deltaTime, this.courtBounds);
@@ -522,12 +807,26 @@ export default class TableTennisGame {
       hitBall(ball.position, botVelocity, 'bot');
       this.awaitingReturnHit = false;
     }
+  }
 
-    // Update UI
-    updateRallyCount(getRallyCount());
-    updateFingerCount(getCurrentFingerCount());
-    updateSwingDirection(getArmedDirection());
-    updateSmashStatus(isSmashArmed());
+  /**
+   * Multiplayer: the ball's continuous flight (gravity/bounce/net/scoring)
+   * is entirely server-owned (see handleMatchStateChange(), which keeps
+   * `ball`/`ballState` synced from the network every tick) — this only
+   * needs to check MY OWN racket against wherever that synced ball
+   * currently is, and report the resulting hit. The opponent's hit
+   * detection happens on their own client, not here.
+   */
+  updateMultiplayerGameLogic() {
+    if (ballState.isActive && checkPlayerRacketCollision(playerRacket, ball, ballState)) {
+      const velocity = getRacketVelocity();
+      const swing = consumePendingSwing();
+      const smash = consumePendingSmash();
+      hitBall(ball.position, velocity, 'player', swing, smash);
+      this.reportHit();
+    }
+
+    this.sendRacketPosition();
   }
 
   /**

@@ -1,0 +1,13 @@
+{
+  "name": "@motion-platform/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:hand-sword": "node hand-sword.mjs",
+    "test:tennis": "node tennis.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1"
+  }
+}

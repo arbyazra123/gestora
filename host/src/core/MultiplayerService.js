@@ -1,133 +1,89 @@
 /**
  * Multiplayer Service - Singleton
- * Handles WebSocket connections and WebRTC peer-to-peer
- * Optimized for low-latency hand tracking data transmission
+ * Thin wrapper around @colyseus/sdk's Client/Room, keeping the same
+ * public surface the rest of the platform (e.g. hand-sword's index.js)
+ * already calls, so game code doesn't need to know it's Colyseus underneath.
  */
+
+import { Client } from '@colyseus/sdk';
+
+const DEFAULT_SERVER_URL = 'ws://localhost:2567';
 
 class MultiplayerService {
   constructor() {
-    this.ws = null;
-    this.peers = new Map(); // peer-id -> { pc, channel }
+    this.client = null;
     this.room = null;
-    this.playerId = this.generatePlayerId();
+    this.playerId = null;
     this.isConnected = false;
 
-    // Performance: Throttle hand data broadcast
+    // Performance: throttle hand data broadcast
     this.lastBroadcast = 0;
     this.BROADCAST_INTERVAL = 50; // 20fps for multiplayer (lower than local 60fps)
 
     // Event handlers
     this.eventHandlers = new Map();
+
+    this._roomUnsubscribers = [];
   }
 
   /**
-   * Generate unique player ID
+   * Create the Colyseus client. This does not open a socket by itself —
+   * the actual handshake happens on joinRoom()/joinOrCreate().
    */
-  generatePlayerId() {
-    return `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Connect to multiplayer server
-   * @param {string} serverUrl - WebSocket server URL
-   */
-  async connect(serverUrl = 'ws://localhost:8080') {
-    if (this.isConnected) {
+  async connect(serverUrl = DEFAULT_SERVER_URL) {
+    if (this.client) {
       console.log('[Multiplayer] Already connected');
       return;
     }
 
     console.log(`[Multiplayer] Connecting to ${serverUrl}...`);
-
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(serverUrl);
-
-        this.ws.onopen = () => {
-          console.log('[Multiplayer] Connected');
-          this.isConnected = true;
-          this.send({ type: 'REGISTER', playerId: this.playerId });
-          resolve();
-        };
-
-        this.ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.handleMessage(data);
-          } catch (error) {
-            console.error('[Multiplayer] Failed to parse message:', error);
-          }
-        };
-
-        this.ws.onerror = (error) => {
-          console.error('[Multiplayer] WebSocket error:', error);
-          reject(error);
-        };
-
-        this.ws.onclose = () => {
-          console.log('[Multiplayer] Disconnected');
-          this.isConnected = false;
-          this.emit('disconnected');
-        };
-      } catch (error) {
-        reject(error);
-      }
-    });
+    this.client = new Client(serverUrl);
+    this.isConnected = true;
   }
 
   /**
-   * Create a new game room
-   * @param {string} gameId - Game identifier
+   * Join (or create, if none is waiting) a room for the given game.
+   * Colyseus's joinOrCreate auto-pairs the first two waiting clients —
+   * no manual room codes needed.
+   * @param {string} roomName - room/game identifier (matches the id
+   *   registered via gameServer.define() on the server)
+   * @param {object} options - passed to the room's onCreate() the first
+   *   time it's created (e.g. locked match settings)
    */
-  createRoom(gameId) {
-    if (!this.isConnected) {
-      console.warn('[Multiplayer] Not connected to server');
-      return;
+  async joinRoom(roomName, options = {}) {
+    if (!this.client) {
+      await this.connect();
     }
 
-    this.send({
-      type: 'CREATE_ROOM',
-      gameId,
-      playerId: this.playerId
-    });
+    console.log(`[Multiplayer] Joining room: ${roomName}`);
+    this.room = await this.client.joinOrCreate(roomName, options);
+    this.playerId = this.room.sessionId;
+    this._wireRoomEvents();
 
-    console.log(`[Multiplayer] Creating room for game: ${gameId}`);
+    return this.room;
   }
 
   /**
-   * Join an existing room
-   * @param {string} roomId - Room ID to join
+   * @deprecated joinOrCreate() unifies create+join — kept only so any
+   * existing caller of createRoom(gameId) doesn't hard-break.
    */
-  joinRoom(roomId) {
-    if (!this.isConnected) {
-      console.warn('[Multiplayer] Not connected to server');
-      return;
-    }
-
-    this.send({
-      type: 'JOIN_ROOM',
-      roomId,
-      playerId: this.playerId
-    });
-
-    this.room = roomId;
-    console.log(`[Multiplayer] Joining room: ${roomId}`);
+  createRoom(gameId, options = {}) {
+    console.warn('[Multiplayer] createRoom() is deprecated; use joinRoom() — Colyseus auto-creates via joinOrCreate');
+    return this.joinRoom(gameId, options);
   }
 
   /**
-   * Leave current room
+   * Leave the current room
    */
   leaveRoom() {
     if (!this.room) return;
 
-    this.send({
-      type: 'LEAVE_ROOM',
-      roomId: this.room,
-      playerId: this.playerId
-    });
+    this._roomUnsubscribers.forEach((unsub) => unsub && unsub());
+    this._roomUnsubscribers = [];
 
+    console.log('[Multiplayer] Leaving room');
+    this.room.leave();
     this.room = null;
-    console.log('[Multiplayer] Left room');
   }
 
   /**
@@ -142,16 +98,10 @@ class MultiplayerService {
 
     if (!this.room) return;
 
-    // Compress hand data for network efficiency
     const compressed = this.compressHandData(handData);
+    if (!compressed) return;
 
-    this.send({
-      type: 'HAND_DATA',
-      roomId: this.room,
-      data: compressed,
-      timestamp: now
-    });
-
+    this.room.send('hand_data', compressed);
     this.lastBroadcast = now;
   }
 
@@ -164,7 +114,7 @@ class MultiplayerService {
       return null;
     }
 
-    return handData.multiHandLandmarks.map(landmarks => ({
+    return handData.multiHandLandmarks.map((landmarks) => ({
       // Only send key landmarks: wrist, middle, index, pinky
       w: [landmarks[0].x, landmarks[0].y, landmarks[0].z], // wrist
       m: [landmarks[9].x, landmarks[9].y, landmarks[9].z], // middle
@@ -182,77 +132,48 @@ class MultiplayerService {
   }
 
   /**
-   * Send game state update
+   * Send a game-state update (score/combo/etc). Written into the room's
+   * synced schema state, so other clients pick it up via onStateChange
+   * without any extra relay message.
    */
   sendGameState(state) {
     if (!this.room) return;
-
-    this.send({
-      type: 'GAME_STATE',
-      roomId: this.room,
-      state,
-      timestamp: Date.now()
-    });
+    this.room.send('game_state', state);
   }
 
   /**
-   * Handle incoming messages
+   * Wire Colyseus room events to this service's generic event emitter,
+   * capturing unsubscribe functions so leaveRoom() can tear them down —
+   * this.room is a singleton reused across game load/unload cycles, so
+   * stale listeners from a previous match must not linger.
+   *
+   * Note: room.onMessage() returns a real unsubscribe function, but
+   * room.onStateChange/onLeave/onError are signal-style objects whose
+   * subscribe call returns an EventEmitter handle, not an unsubscribe
+   * function — they're detached via their own `.remove(callback)`.
    */
-  handleMessage(data) {
-    switch (data.type) {
-      case 'ROOM_CREATED':
-        console.log('[Multiplayer] Room created:', data.roomId);
-        this.room = data.roomId;
-        this.emit('roomCreated', data);
-        break;
+  _wireRoomEvents() {
+    const room = this.room;
 
-      case 'ROOM_JOINED':
-        console.log('[Multiplayer] Joined room:', data.roomId);
-        this.emit('roomJoined', data);
-        break;
+    const onOpponentHand = (msg) => this.emit('opponentHand', msg);
+    const onStateChange = (state) => this.emit('stateChange', state);
+    const onLeave = (code) => {
+      this.emit('disconnected', { code });
+      this.room = null;
+    };
+    const onError = (code, message) => this.emit('error', { code, message });
 
-      case 'PLAYER_JOINED':
-        console.log('[Multiplayer] Player joined:', data.playerId);
-        this.emit('playerJoined', data);
-        break;
+    const unsubOpponentHand = room.onMessage('opponent_hand', onOpponentHand);
+    room.onStateChange(onStateChange);
+    room.onLeave(onLeave);
+    room.onError(onError);
 
-      case 'PLAYER_LEFT':
-        console.log('[Multiplayer] Player left:', data.playerId);
-        this.emit('playerLeft', data);
-        break;
-
-      case 'HAND_DATA':
-        // Received opponent hand data
-        this.emit('opponentHand', {
-          playerId: data.playerId,
-          data: this.decompressHandData(data.data),
-          timestamp: data.timestamp
-        });
-        break;
-
-      case 'GAME_STATE':
-        this.emit('gameState', data.state);
-        break;
-
-      case 'ERROR':
-        console.error('[Multiplayer] Server error:', data.message);
-        this.emit('error', data);
-        break;
-
-      default:
-        console.warn('[Multiplayer] Unknown message type:', data.type);
-    }
-  }
-
-  /**
-   * Send message to server
-   */
-  send(data) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    } else {
-      console.warn('[Multiplayer] Cannot send, not connected');
-    }
+    this._roomUnsubscribers.push(
+      unsubOpponentHand,
+      () => room.onStateChange.remove(onStateChange),
+      () => room.onLeave.remove(onLeave),
+      () => room.onError.remove(onError)
+    );
   }
 
   /**
@@ -278,24 +199,22 @@ class MultiplayerService {
   emit(event, data) {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
-      handlers.forEach(handler => handler(data));
+      handlers.forEach((handler) => handler(data));
     }
   }
 
   /**
-   * Disconnect from server
+   * Disconnect from server entirely
    */
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-      this.isConnected = false;
-      console.log('[Multiplayer] Disconnected');
-    }
+    this.leaveRoom();
+    this.client = null;
+    this.isConnected = false;
+    console.log('[Multiplayer] Disconnected');
   }
 
   /**
-   * Get current player ID
+   * Get current player ID (Colyseus session id, set once joined a room)
    */
   getPlayerId() {
     return this.playerId;
@@ -305,14 +224,16 @@ class MultiplayerService {
    * Get current room ID
    */
   getRoomId() {
-    return this.room;
+    return this.room?.roomId ?? null;
   }
 
   /**
-   * Check if connected
+   * "Connected" means actively joined to a room — hand-sword's onHandData()
+   * already gates broadcastHandData on this, so it naturally stays silent
+   * in solo mode with no change needed there.
    */
   isConnectedToServer() {
-    return this.isConnected;
+    return !!this.room;
   }
 }
 
