@@ -6,7 +6,8 @@
   "scripts": {
     "test:hand-sword": "node hand-sword.mjs",
     "test:tennis": "node tennis.mjs",
-    "test:matrix": "node matrix.mjs"
+    "test:matrix": "node matrix.mjs",
+    "soak": "node soak.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.61.1"
