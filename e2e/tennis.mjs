@@ -29,12 +29,15 @@
 import { mkdirSync } from 'fs';
 import { chromium } from 'playwright-core';
 import { applyNetworkCondition, getScenario } from './network-conditions.mjs';
+import { createRecorder } from './metrics.mjs';
 
 mkdirSync('screenshots', { recursive: true });
 
 const log = (label, ...args) => console.log(`[${label}]`, ...args);
 const TIMEOUT = Number(process.env.E2E_TIMEOUT_MS) || 15000;
-const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
+const SCENARIO_NAME = process.env.NETWORK_SCENARIO || 'ideal';
+const SCENARIO = getScenario(SCENARIO_NAME);
+const metrics = createRecorder('tennis', SCENARIO_NAME);
 
 (async () => {
   const browser = await chromium.launch({
@@ -64,6 +67,7 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
 
   await pageA.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: TIMEOUT });
   await pageB.waitForSelector('button[data-game-id="tennis"][data-mode="multiplayer"]', { timeout: TIMEOUT });
+  metrics.mark('hubLoaded');
   log('hub', 'both windows show tennis 1v1 Online button');
 
   await pageA.click('button[data-game-id="tennis"][data-mode="multiplayer"]');
@@ -76,11 +80,13 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     () => document.getElementById('status-display')?.textContent?.includes('SPACE'),
     { timeout: TIMEOUT }
   );
+  metrics.mark('gameLoaded'); // asset-loading-heavy: remote module + MediaPipe WASM
   log('both', 'game loaded, showing Press SPACE prompt');
   await pageA.screenshot({ path: 'screenshots/tn-01-A-prompt.png' });
 
   // Press SPACE in both windows (the audio-unlock gesture point AND the
   // multiplayer "ready" trigger — see setupAudioUnlock()/handleReady()).
+  metrics.mark('readyClickA');
   await pageA.click('body'); // focus first, some browsers need a real focus target for key events
   await pageA.keyboard.press('Space');
   log('A', 'pressed SPACE');
@@ -88,8 +94,10 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     () => document.getElementById('status-display')?.textContent?.includes('Waiting'),
     { timeout: TIMEOUT }
   );
+  metrics.mark('waitingShownA'); // connect() + joinRoom() round trip — direct RTT proxy
   log('A', 'showing Waiting for opponent — OK');
 
+  metrics.mark('readyClickB');
   await pageB.click('body');
   await pageB.keyboard.press('Space');
   log('B', 'pressed SPACE');
@@ -99,10 +107,12 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     () => /^[123]$/.test(document.getElementById('status-display')?.textContent?.trim() || ''),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('countdownShownA');
   await pageB.waitForFunction(
     () => /^[123]$/.test(document.getElementById('status-display')?.textContent?.trim() || ''),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('countdownShownB');
   log('both', 'showing synchronized countdown — OK');
   await pageA.screenshot({ path: 'screenshots/tn-02-A-countdown.png' });
 
@@ -112,7 +122,18 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
   // timeout — still calls completePlayerServe() with power=MIN, which
   // still legally clears the net (serveBall()'s own back-solve guarantees
   // that regardless of power) and gets reported to the server.
-  await new Promise((r) => setTimeout(r, Math.max(3500, TIMEOUT * 0.25)));
+  //
+  // This wait only needs to comfortably exceed the countdown's own fixed
+  // ~3s duration (server-controlled, NOT network-scaled — confirmed by
+  // hand-sword's equivalent countdown-to-playing gap staying ~2.8-3.0s
+  // across every scenario) so status-display has settled past "1" before
+  // we read it. It must NOT scale with TIMEOUT — an earlier version scaled
+  // this to TIMEOUT*0.25 (22.5s under "poor"), which silently swallowed
+  // the real serve/point-resolution event inside the sleep itself and
+  // made the downstream pointResolved timing measure this sleep's length
+  // instead of the actual game event.
+  await new Promise((r) => setTimeout(r, 4500));
+  metrics.mark('postCountdownCheck');
   const [aText, bText] = await Promise.all([
     pageA.evaluate(() => document.getElementById('status-display')?.textContent),
     pageB.evaluate(() => document.getElementById('status-display')?.textContent)
@@ -122,6 +143,10 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
   await pageB.screenshot({ path: 'screenshots/tn-03-B-serve-phase.png' });
 
   // Wait out the serve-challenge timeout + ball flight + point-reset delay.
+  // NOTE: this duration includes a fixed ~5s client-side serve-challenge
+  // timeout (serve-challenge.js's TIME_LIMIT_MS) that is NOT
+  // network-attributable — subtract ~5000ms plus typical ball-flight time
+  // (~1s) when comparing this metric across scenarios.
   log('test', 'waiting for the auto-timeout serve to resolve into a point...');
   await pageA.waitForFunction(
     () => {
@@ -130,6 +155,7 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     },
     { timeout: TIMEOUT }
   );
+  metrics.mark('pointResolved');
   log('A', 'saw a point resolve — OK, full serve->physics->scoring round-trip worked');
   await pageA.screenshot({ path: 'screenshots/tn-04-A-point.png' });
   await pageB.screenshot({ path: 'screenshots/tn-04-B-point.png' });
@@ -149,19 +175,25 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
   }
 
   // Disconnect A mid-match, confirm B doesn't crash
+  metrics.mark('disconnectIssued');
   await ctxA.close();
   log('A', 'closed context (simulating disconnect)');
   await pageB.waitForFunction(
     () => document.getElementById('status-display')?.textContent?.includes('disconnected'),
     { timeout: TIMEOUT }
   );
+  metrics.mark('disconnectDetectedB');
   log('B', 'received opponent-disconnected state — OK, no crash');
   await pageB.screenshot({ path: 'screenshots/tn-05-B-disconnected.png' });
 
   await ctxB.close();
   await browser.close();
+
+  const metricsPath = metrics.save();
+  log('metrics', `saved to ${metricsPath}`);
   log('done', 'all checks passed');
 })().catch((err) => {
   console.error('E2E TEST FAILED:', err);
+  try { metrics.save(); } catch { /* best-effort on failure */ }
   process.exit(1);
 });

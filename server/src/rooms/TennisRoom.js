@@ -2,6 +2,10 @@ import { Room } from 'colyseus';
 import { schema, MapSchema } from '@colyseus/schema';
 import * as tennisPhysics from '../physics/tennisPhysics.js';
 import * as rules from '../physics/tennisRules.js';
+import { roomsActive, clientsConnected, tickDuration, tickOverruns, clientRTT } from '../metrics.js';
+
+const ROOM_LABEL = 'tennis';
+const TICK_BUDGET_S = 1 / 60; // matches Colyseus's default setSimulationInterval rate
 
 const Vec3 = schema({ x: 'number', y: 'number', z: 'number' });
 
@@ -129,7 +133,16 @@ export class TennisRoom extends Room {
       this.syncState();
     });
 
+    // Fed by the client's own room.ping() (Colyseus's built-in RTT
+    // measurement) — see MultiplayerService.js. Reported back over a
+    // message since the server has no direct way to read the client's
+    // own ping result.
+    this.onMessage('__rtt_report', (client, { latencyMs }) => {
+      if (typeof latencyMs === 'number') clientRTT.observe({ room: ROOM_LABEL }, latencyMs / 1000);
+    });
+
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
+    roomsActive.inc({ room: ROOM_LABEL });
   }
 
   onJoin(client) {
@@ -140,6 +153,7 @@ export class TennisRoom extends Room {
       racket: new Vec3({ x: 0, y: 1, z: role === 'player' ? -5 : 4.5 }),
       connected: true
     }));
+    clientsConnected.inc({ room: ROOM_LABEL });
 
     if (this.state.players.size === this.maxClients) {
       this.lock();
@@ -152,6 +166,7 @@ export class TennisRoom extends Room {
   onLeave(client) {
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = false;
+    clientsConnected.dec({ room: ROOM_LABEL });
 
     // v1: no reconnection window — a drop ends the match for both players.
     if (this.state.status === 'playing' || this.state.status === 'countdown') {
@@ -159,8 +174,17 @@ export class TennisRoom extends Room {
     }
   }
 
+  onDispose() {
+    roomsActive.dec({ room: ROOM_LABEL });
+  }
+
   update(deltaTime) {
     if (this.state.status !== 'playing') return;
+
+    // Only measures ticks that actually did simulation work (status ===
+    // 'playing') — idle waiting/countdown ticks return above and would
+    // just dilute the histogram with near-zero values.
+    const tickStart = process.hrtime.bigint();
 
     if (this.ballState.isActive) {
       const bounceResult = tennisPhysics.updateBall(this.ballState, deltaTime, COURT_BOUNDS);
@@ -182,6 +206,10 @@ export class TennisRoom extends Room {
     }
 
     this.syncState();
+
+    const elapsedS = Number(process.hrtime.bigint() - tickStart) / 1e9;
+    tickDuration.observe({ room: ROOM_LABEL }, elapsedS);
+    if (elapsedS > TICK_BUDGET_S) tickOverruns.inc({ room: ROOM_LABEL });
   }
 
   syncState() {

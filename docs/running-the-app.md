@@ -48,17 +48,29 @@ The host dynamically loads whichever games are running via Module Federation, so
 | pong | 5003 | http |
 | server (multiplayer) | 2567 | ws |
 
-## Playing hand-sword in multiplayer
+## Playing in multiplayer
 
-hand-sword is currently the only game with multiplayer wired up (pong/tennis are single-player only for now — see `docs/multiplayer-networking-research.md` for why). To try it:
+hand-sword and tennis both have multiplayer wired up (pong is still single-player only — see `docs/multiplayer-networking-research.md` for the architecture, and `docs/network-simulation-metrics.md` for measured performance across network conditions). To try it:
 
-1. Run `npm run dev` (or at minimum `dev:host` + `dev:hand-sword` + `dev:server`).
+1. Run `npm run dev` (or at minimum `dev:host` + the game(s) you want + `dev:server`).
 2. Open **http://localhost:5151** in two separate browser windows/profiles (or one normal + one incognito — two tabs in the *same* profile can work too, since each game instance gets its own Colyseus connection).
-3. Click hand-sword's **🌐 1v1 Online** button in both.
-4. Click the in-game **▶ Play** button in each window — this is the "ready" signal. Once both are ready, a synchronized countdown starts and the beat/box spawning kicks off at the same moment in both windows.
-5. Each window shows the other's live score/combo in the panel top-right.
+3. Click the game's **🌐 1v1 Online** button in both.
+4. hand-sword: click the in-game **▶ Play** button in each window (the "ready" signal). tennis: press **SPACE** in each window instead. Once both are ready, a synchronized countdown starts.
+5. hand-sword shows the opponent's live score/combo top-right; tennis shows the opponent's score in the main scoreboard, labeled "OPPONENT."
 
-The regular **▶ Play** button (solo mode) works as before and doesn't touch the multiplayer server at all.
+The regular solo entry point (hand-sword's **▶ Play** button / tennis's SPACE-to-start) works as before and doesn't touch the multiplayer server at all.
+
+## Monitoring
+
+The multiplayer server exposes Prometheus-format metrics at **http://localhost:2567/metrics** (via `prom-client` — see `server/src/metrics.js`) whenever it's running. No extra setup needed to view it raw:
+
+```bash
+curl http://localhost:2567/metrics
+```
+
+Covers: default Node.js process metrics (event-loop lag, memory, CPU, GC — free from `prom-client`), active rooms/connected clients per game, tennis's per-tick simulation duration + overrun count, and real client-reported RTT (fed by each client's own `room.ping()`, polled every 5s — see `MultiplayerService.js`'s `getLatency()`).
+
+To actually visualize this (not just curl it), point any Prometheus instance at that endpoint — nothing in the instrumentation needs to change to scale from "curl it locally" up to a real Prometheus + Grafana setup later. See `docs/network-simulation-metrics.md` for what this does and doesn't cover (e.g. reconciliation/patch-bandwidth metrics are still a known gap).
 
 ## Production build
 

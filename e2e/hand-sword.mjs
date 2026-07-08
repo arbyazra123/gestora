@@ -23,12 +23,15 @@
 import { mkdirSync } from 'fs';
 import { chromium } from 'playwright-core';
 import { applyNetworkCondition, getScenario } from './network-conditions.mjs';
+import { createRecorder } from './metrics.mjs';
 
 mkdirSync('screenshots', { recursive: true });
 
 const log = (label, ...args) => console.log(`[${label}]`, ...args);
 const TIMEOUT = Number(process.env.E2E_TIMEOUT_MS) || 15000;
-const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
+const SCENARIO_NAME = process.env.NETWORK_SCENARIO || 'ideal';
+const SCENARIO = getScenario(SCENARIO_NAME);
+const metrics = createRecorder('hand-sword', SCENARIO_NAME);
 
 (async () => {
   const browser = await chromium.launch({
@@ -65,6 +68,7 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
 
   await pageA.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: TIMEOUT });
   await pageB.waitForSelector('button[data-game-id="hand-sword"][data-mode="multiplayer"]', { timeout: TIMEOUT });
+  metrics.mark('hubLoaded');
   log('hub', 'both windows show the 1v1 Online button');
 
   await pageA.screenshot({ path: 'screenshots/hs-01-hub-A.png' });
@@ -72,23 +76,28 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
   await pageA.click('button[data-game-id="hand-sword"][data-mode="multiplayer"]');
   log('A', 'clicked 1v1 Online');
   await pageA.waitForSelector('#play-btn', { timeout: TIMEOUT });
+  metrics.mark('gameLoadedA'); // asset-loading-heavy: remote module + MediaPipe WASM
   await pageA.screenshot({ path: 'screenshots/hs-02-A-loaded.png' });
 
   await pageB.click('button[data-game-id="hand-sword"][data-mode="multiplayer"]');
   log('B', 'clicked 1v1 Online');
   await pageB.waitForSelector('#play-btn', { timeout: TIMEOUT });
+  metrics.mark('gameLoadedB');
 
   // Click "Play" (the gesture-bound ready signal) in A first, confirm it shows "Waiting for opponent"
+  metrics.mark('readyClickA');
   await pageA.click('#play-btn');
   log('A', 'clicked Play (ready)');
   await pageA.waitForFunction(
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Waiting'),
     { timeout: TIMEOUT }
   );
+  metrics.mark('waitingShownA'); // connect() + joinRoom() round trip — direct RTT proxy
   await pageA.screenshot({ path: 'screenshots/hs-03-A-waiting.png' });
   log('A', 'showing Waiting for opponent — OK');
 
   // Now B clicks Play too — should trigger both into countdown
+  metrics.mark('readyClickB');
   await pageB.click('#play-btn');
   log('B', 'clicked Play (ready)');
 
@@ -96,10 +105,12 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Starting in'),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('countdownShownA');
   await pageB.waitForFunction(
     () => document.getElementById('multiplayer-status-text')?.textContent?.includes('Starting in'),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('countdownShownB');
   log('both', 'showing synchronized countdown — OK');
   await pageA.screenshot({ path: 'screenshots/hs-04-A-countdown.png' });
   await pageB.screenshot({ path: 'screenshots/hs-04-B-countdown.png' });
@@ -109,10 +120,12 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     () => document.getElementById('multiplayer-overlay')?.classList.contains('hidden'),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('playingShownA');
   await pageB.waitForFunction(
     () => document.getElementById('multiplayer-overlay')?.classList.contains('hidden'),
     { timeout: TIMEOUT }
   );
+  metrics.markAbsolute('playingShownB');
   log('both', 'countdown finished, overlay hidden — match is playing on both');
   await pageA.screenshot({ path: 'screenshots/hs-05-A-playing.png' });
   await pageB.screenshot({ path: 'screenshots/hs-05-B-playing.png' });
@@ -130,6 +143,7 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
   await pageB.screenshot({ path: 'screenshots/hs-06-B-mid-match.png' });
 
   // Close A mid-match, confirm B receives an ended/win state without crashing
+  metrics.mark('disconnectIssued');
   await ctxA.close();
   log('A', 'closed context (simulating disconnect)');
 
@@ -144,13 +158,18 @@ const SCENARIO = getScenario(process.env.NETWORK_SCENARIO || 'ideal');
     log('B', 'FAILED waiting for ended state, current text:', text);
     throw e;
   });
+  metrics.mark('disconnectDetectedB');
   await pageB.screenshot({ path: 'screenshots/hs-07-B-ended.png' });
   log('B', 'received match-ended state after A disconnected — OK, no crash');
 
   await ctxB.close();
   await browser.close();
+
+  const metricsPath = metrics.save();
+  log('metrics', `saved to ${metricsPath}`);
   log('done', 'all checks passed');
 })().catch((err) => {
   console.error('E2E TEST FAILED:', err);
+  try { metrics.save(); } catch { /* best-effort on failure */ }
   process.exit(1);
 });

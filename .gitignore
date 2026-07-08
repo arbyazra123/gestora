@@ -36,6 +36,7 @@ coverage/
 /cypress/videos/
 /cypress/screenshots/
 /e2e/screenshots/
+/e2e/metrics/
 .nyc_output
 
 # Editor / IDE configuration

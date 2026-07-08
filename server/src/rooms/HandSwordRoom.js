@@ -1,5 +1,8 @@
 import { Room } from 'colyseus';
 import { schema, MapSchema } from '@colyseus/schema';
+import { roomsActive, clientsConnected, clientRTT } from '../metrics.js';
+
+const ROOM_LABEL = 'hand-sword';
 
 const PlayerState = schema({
   sessionId: 'string',
@@ -46,6 +49,16 @@ export class HandSwordRoom extends Room {
     this.onMessage('hand_data', (client, data) => {
       this.broadcast('opponent_hand', { sessionId: client.sessionId, data }, { except: client });
     });
+
+    // Fed by the client's own room.ping() (Colyseus's built-in RTT
+    // measurement) — see MultiplayerService.js. Reported back over a
+    // message since the server has no direct way to read the client's
+    // own ping result.
+    this.onMessage('__rtt_report', (client, { latencyMs }) => {
+      if (typeof latencyMs === 'number') clientRTT.observe({ room: ROOM_LABEL }, latencyMs / 1000);
+    });
+
+    roomsActive.inc({ room: ROOM_LABEL });
   }
 
   onJoin(client) {
@@ -56,6 +69,7 @@ export class HandSwordRoom extends Room {
       maxCombo: 0,
       connected: true
     }));
+    clientsConnected.inc({ room: ROOM_LABEL });
 
     if (this.state.players.size === this.maxClients) {
       this.lock();
@@ -68,11 +82,16 @@ export class HandSwordRoom extends Room {
   onLeave(client) {
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = false;
+    clientsConnected.dec({ room: ROOM_LABEL });
 
     // v1: no reconnection window — a drop ends the match for both players.
     // Room.allowReconnection() is a future upgrade, not built here.
     if (this.state.status === 'playing' || this.state.status === 'countdown') {
       this.state.status = 'ended';
     }
+  }
+
+  onDispose() {
+    roomsActive.dec({ room: ROOM_LABEL });
   }
 }

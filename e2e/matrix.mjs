@@ -19,6 +19,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCENARIOS } from './network-conditions.mjs';
@@ -29,6 +30,7 @@ const serverDir = path.join(repoRoot, 'server');
 const serverPort = 2567;
 
 const GAMES = ['hand-sword', 'tennis'];
+const collectedMetrics = [];
 
 async function waitForPort(port, timeoutMs) {
   const start = Date.now();
@@ -72,6 +74,11 @@ async function runScenario(name, scenario) {
       if (result.status !== 0) {
         throw new Error(`${game} failed under scenario "${name}" (exit code ${result.status})`);
       }
+
+      const metricsFile = path.join(__dirname, 'metrics', `${name}-${game}.json`);
+      if (existsSync(metricsFile)) {
+        collectedMetrics.push(JSON.parse(readFileSync(metricsFile, 'utf8')));
+      }
     }
   } finally {
     server.kill();
@@ -105,6 +112,13 @@ const scenarioNames = requested.length ? requested : Object.keys(SCENARIOS);
   console.log('\n=== Matrix summary ===');
   for (const name of scenarioNames) {
     console.log(`  ${failures.includes(name) ? '❌' : '✅'} ${name}`);
+  }
+
+  if (collectedMetrics.length) {
+    mkdirSync(path.join(__dirname, 'metrics'), { recursive: true });
+    const summaryPath = path.join(__dirname, 'metrics', 'summary.json');
+    writeFileSync(summaryPath, JSON.stringify(collectedMetrics, null, 2));
+    console.log(`\n[matrix] wrote combined metrics summary to ${summaryPath}`);
   }
 
   if (failures.length) {

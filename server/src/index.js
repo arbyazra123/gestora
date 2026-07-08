@@ -1,11 +1,23 @@
 import { Server } from 'colyseus';
 import { HandSwordRoom } from './rooms/HandSwordRoom.js';
 import { TennisRoom } from './rooms/TennisRoom.js';
+import { register } from './metrics.js';
 
 const port = Number(process.env.PORT) || 2567;
 const simulatedLatencyMs = Number(process.env.SIMULATE_LATENCY_MS) || 0;
 
-const gameServer = new Server();
+const gameServer = new Server({
+  // Registers a plain Express route on the same HTTP server the WebSocket
+  // transport already runs, rather than standing up a second listener.
+  // See docs/network-simulation-metrics.md for what this endpoint does
+  // and doesn't cover.
+  express: (app) => {
+    app.get('/metrics', async (req, res) => {
+      res.set('Content-Type', register.contentType);
+      res.end(await register.metrics());
+    });
+  }
+});
 
 // Room name doubles as the game's registry id ("hand-sword"/"tennis"), so
 // MultiplayerService can pass gameId straight through with no mapping table.

@@ -24,6 +24,14 @@ class MultiplayerService {
     this.eventHandlers = new Map();
 
     this._roomUnsubscribers = [];
+
+    // Most recent round-trip time, in ms, from Colyseus's own room.ping() —
+    // polled periodically once joined (see _wireRoomEvents()) and also
+    // reported to the server for its /metrics endpoint (see
+    // server/src/metrics.js and docs/network-simulation-metrics.md).
+    this.lastRTT = null;
+    this._rttIntervalId = null;
+    this.RTT_POLL_INTERVAL = 5000;
   }
 
   /**
@@ -80,6 +88,7 @@ class MultiplayerService {
 
     this._roomUnsubscribers.forEach((unsub) => unsub && unsub());
     this._roomUnsubscribers = [];
+    this._stopRttPolling();
 
     console.log('[Multiplayer] Leaving room');
     this.room.leave();
@@ -174,6 +183,44 @@ class MultiplayerService {
       () => room.onLeave.remove(onLeave),
       () => room.onError.remove(onError)
     );
+
+    this._startRttPolling();
+  }
+
+  /**
+   * Periodically measure RTT via Colyseus's built-in room.ping() and
+   * report it to the server (which feeds it into a Prometheus histogram —
+   * see server/src/metrics.js) as well as emitting it locally for any
+   * in-game "connection quality" UI to consume.
+   */
+  _startRttPolling() {
+    this._stopRttPolling();
+    const poll = () => {
+      if (!this.room) return;
+      this.room.ping((ms) => {
+        this.lastRTT = ms;
+        this.emit('rtt', ms);
+        this.room?.send('__rtt_report', { latencyMs: ms });
+      });
+    };
+    poll();
+    this._rttIntervalId = setInterval(poll, this.RTT_POLL_INTERVAL);
+  }
+
+  _stopRttPolling() {
+    if (this._rttIntervalId) {
+      clearInterval(this._rttIntervalId);
+      this._rttIntervalId = null;
+    }
+    this.lastRTT = null;
+  }
+
+  /**
+   * Most recent round-trip time in ms, or null if not yet measured /
+   * not currently in a room.
+   */
+  getLatency() {
+    return this.lastRTT;
   }
 
   /**
