@@ -2,6 +2,7 @@
  * Table Tennis Game UI Overlay
  * Displays score, game status, and controls
  */
+import '../style.css';
 
 let uiOverlay;
 let scoreDisplay;
@@ -19,116 +20,50 @@ export function setupUI(container) {
   // Create UI overlay container
   uiOverlay = document.createElement('div');
   uiOverlay.id = 'table-tennis-ui';
-  uiOverlay.style.cssText = `
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: white;
-    z-index: 1000;
-  `;
+  uiOverlay.className = 'tt-ui-overlay';
 
   // Score display (top center)
   scoreDisplay = document.createElement('div');
-  scoreDisplay.style.cssText = `
-    position: absolute;
-    top: 150px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.7);
-    padding: 15px 20px;
-    border-radius: 12px;
-    display: flex;
-    gap: 30px;
-    align-items: center;
-    font-size: 24px;
-    font-weight: bold;
-    backdrop-filter: blur(10px);
-  `;
+  scoreDisplay.className = 'tt-score-panel';
   scoreDisplay.innerHTML = `
-    <div style="text-align: center;">
-      <div style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">YOU</div>
+    <div class="tt-score-panel__side">
+      <div class="tt-score-panel__label">YOU</div>
       <div id="player-score">0</div>
     </div>
-    <div style="font-size: 32px; opacity: 0.5;">:</div>
-    <div style="text-align: center;">
-      <div id="bot-label" style="font-size: 14px; opacity: 0.7; margin-bottom: 5px;">BOT</div>
+    <div class="tt-score-panel__divider">:</div>
+    <div class="tt-score-panel__side">
+      <div id="bot-label" class="tt-score-panel__label">BOT</div>
       <div id="bot-score">0</div>
     </div>
   `;
 
   // Game score (games won)
   gameScoreDisplay = document.createElement('div');
-  gameScoreDisplay.style.cssText = `
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.5);
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 16px;
-    backdrop-filter: blur(10px);
-  `;
+  gameScoreDisplay.className = 'tt-games-panel';
   gameScoreDisplay.innerHTML = `
     <span id="player-games">0</span> - <span id="bot-games">0</span> Games
   `;
 
   // Status display (center)
   statusDisplay = document.createElement('div');
-  statusDisplay.style.cssText = `
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 30px 60px;
-    border-radius: 16px;
-    font-size: 36px;
-    font-weight: bold;
-    text-align: center;
-    display: none;
-    backdrop-filter: blur(10px);
-  `;
+  statusDisplay.className = 'tt-status';
   statusDisplay.id = 'status-display';
 
   // Rally counter
   rallyDisplay = document.createElement('div');
-  rallyDisplay.style.cssText = `
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 15px 25px;
-    border-radius: 8px;
-    font-size: 18px;
-    backdrop-filter: blur(10px);
-  `;
+  rallyDisplay.className = 'tt-rally-panel';
   rallyDisplay.innerHTML = `Rally: <span id="rally-count">0</span>`;
 
   // Live debug readout of the raw finger count, near the camera preview
   // (CameraService places that canvas at top:10px, right:10px, 240x180)
   fingerCountDisplay = document.createElement('div');
   fingerCountDisplay.id = 'finger-count';
-  fingerCountDisplay.style.cssText = `
-    position: absolute;
-    top: 200px;
-    right: 10px;
-    width: 240px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 8px 0;
-    border-radius: 8px;
-    text-align: center;
-    font-size: 13px;
-  `;
+  fingerCountDisplay.className = 'tt-finger-panel';
   fingerCountDisplay.innerHTML = `
-    Fingers: <span id="finger-count-value" style="font-weight: bold; color: #ffcc00;">-</span>
+    Fingers: <span id="finger-count-value" class="tt-finger-panel__value tt-finger-panel__value--amber">-</span>
     &nbsp;|&nbsp;
-    Swing: <span id="swing-direction-value" style="font-weight: bold; color: #4ade80;">-</span>
-    <div id="smash-status-value" style="font-weight: bold; color: #f87171; margin-top: 4px; visibility: hidden;">
+    Swing: <span id="swing-direction-value" class="tt-finger-panel__value tt-finger-panel__value--green">-</span>
+    <div id="smash-status-value" class="tt-smash-status">
       🔥 SMASH READY!
     </div>
   `;
@@ -137,67 +72,33 @@ export function setupUI(container) {
   // (pending) turning green (confirmed) as the player shows each in order.
   serveChallengeDisplay = document.createElement('div');
   serveChallengeDisplay.id = 'serve-challenge';
-  serveChallengeDisplay.style.cssText = `
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 30px 50px;
-    border-radius: 16px;
-    text-align: center;
-    display: none;
-    backdrop-filter: blur(10px);
-  `;
+  serveChallengeDisplay.className = 'tt-serve-challenge';
   serveChallengeDisplay.innerHTML = `
-    <div style="font-size: 18px; margin-bottom: 16px; opacity: 0.85;">Show fingers in order to serve!</div>
-    <div style="display: flex; gap: 16px; justify-content: center;">
+    <div class="tt-serve-challenge__hint">Show fingers in order to serve!</div>
+    <div class="tt-serve-challenge__digits">
       ${[0, 1, 2]
         .map(
           (i) => `
-        <div id="serve-digit-${i}" style="
-          width: 60px;
-          height: 60px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.15);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-          font-weight: bold;
-          color: #888;
-        ">-</div>
+        <div id="serve-digit-${i}" class="tt-serve-digit tt-serve-digit--pending">-</div>
       `
         )
         .join('')}
     </div>
-    <div style="margin-top: 16px; font-size: 14px; opacity: 0.7;">
+    <div class="tt-serve-challenge__timer-row">
       Time left: <span id="serve-timer">0.0</span>s
     </div>
   `;
 
   // Controls display (bottom)
   controlsDisplay = document.createElement('div');
-  controlsDisplay.style.cssText = `
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.6);
-    padding: 15px 20px;
-    border-radius: 12px;
-    font-size: 14px;
-    text-align: center;
-    backdrop-filter: blur(10px);
-    max-width: 600px;
-  `;
+  controlsDisplay.className = 'tt-controls-panel';
   controlsDisplay.innerHTML = `
-    <div style="margin-bottom: 10px;">
+    <div class="tt-controls-panel__title">
       <strong>🏓 Motion Table Tennis</strong>
     </div>
-    <div style="opacity: 0.9; line-height: 1.6;">
+    <div class="tt-controls-panel__hint">
       Move your hand to control the paddle<br>
-      <span style="font-size: 12px; opacity: 0.7;">
+      <span class="tt-controls-panel__small">
         Press SPACE to start • 1/2/3 fingers to aim • 5 fingers to smash<br>
         Show the finger-count digits in order to serve • First to 2 games wins
       </span>
@@ -251,12 +152,12 @@ export function updateSwingDirection(direction) {
 export function updateSmashStatus(armed) {
   const el = document.getElementById('smash-status-value');
   if (!el) return;
-  el.style.visibility = armed ? 'visible' : 'hidden';
+  el.classList.toggle('armed', armed);
 }
 
 export function showStatus(message, duration = 0) {
   statusDisplay.textContent = message;
-  statusDisplay.style.display = 'block';
+  statusDisplay.classList.add('visible');
 
   if (duration > 0) {
     setTimeout(() => {
@@ -266,7 +167,7 @@ export function showStatus(message, duration = 0) {
 }
 
 export function hideStatus() {
-  statusDisplay.style.display = 'none';
+  statusDisplay.classList.remove('visible');
 }
 
 /**
@@ -330,10 +231,9 @@ export function showServeChallenge(digits) {
     const el = document.getElementById(`serve-digit-${i}`);
     if (!el) return;
     el.textContent = digit;
-    el.style.color = '#888';
-    el.style.background = 'rgba(255, 255, 255, 0.15)';
+    el.className = 'tt-serve-digit tt-serve-digit--pending';
   });
-  serveChallengeDisplay.style.display = 'block';
+  serveChallengeDisplay.classList.add('visible');
 }
 
 export function updateServeChallengeDisplay(state) {
@@ -344,12 +244,11 @@ export function updateServeChallengeDisplay(state) {
     if (!el) return;
 
     if (state.digitDone[i]) {
-      el.style.color = '#4ade80';
-      el.style.background = 'rgba(74, 222, 128, 0.2)';
+      el.className = 'tt-serve-digit tt-serve-digit--done';
     } else if (i === state.currentIndex) {
-      el.style.color = '#ffcc00';
+      el.className = 'tt-serve-digit tt-serve-digit--current';
     } else {
-      el.style.color = '#888';
+      el.className = 'tt-serve-digit tt-serve-digit--pending';
     }
   });
 
@@ -358,7 +257,7 @@ export function updateServeChallengeDisplay(state) {
 }
 
 export function hideServeChallenge() {
-  serveChallengeDisplay.style.display = 'none';
+  serveChallengeDisplay.classList.remove('visible');
 }
 
 export function showPointWinner(winner) {
@@ -367,11 +266,11 @@ export function showPointWinner(winner) {
 }
 
 export function hideControls() {
-  controlsDisplay.style.display = 'none';
+  controlsDisplay.classList.add('hidden');
 }
 
 export function showControls() {
-  controlsDisplay.style.display = 'block';
+  controlsDisplay.classList.remove('hidden');
 }
 
 export function cleanupUI() {

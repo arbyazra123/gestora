@@ -7,7 +7,16 @@
 
 import { Client } from '@colyseus/sdk';
 
-const DEFAULT_SERVER_URL = 'ws://localhost:2567';
+// A hardcoded 'ws://localhost:2567' only works when the browser and the
+// server are the same machine — breaks for any remote client (phone over a
+// Cloudflare tunnel, another device on the LAN, etc), since "localhost"
+// there means the client's own device. Default to the page's own hostname
+// instead (covers LAN-IP access transparently); VITE_MULTIPLAYER_SERVER_URL
+// overrides it for setups where the game server is on a different public
+// hostname than the static site (e.g. a tunnel that maps one hostname per
+// origin port).
+const DEFAULT_SERVER_URL = import.meta.env.VITE_MULTIPLAYER_SERVER_URL
+  || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:2567`;
 
 class MultiplayerService {
   constructor() {

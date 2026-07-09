@@ -2,7 +2,7 @@
  * Pong Game UI Overlay
  * Displays score, game status, controls, and special-ability prompts
  */
-
+import '../style.css';
 import { ABILITY_TYPES } from './abilities.js';
 
 let uiOverlay;
@@ -13,11 +13,6 @@ let controlsDisplay;
 let abilityPanelDisplay;
 let fingerCountDisplay;
 
-// "Lying flat on the table" look for the skill-activated text (the score
-// display itself is now real 3D geometry — see score-display.js — so it
-// doesn't need this CSS approximation).
-const TABLE_WARP_TRANSFORM = 'perspective(400px) rotateX(45deg)';
-
 function patternHint(pattern) {
   return pattern.join(' → '); // e.g. "5 → 3 → 2"
 }
@@ -25,119 +20,53 @@ function patternHint(pattern) {
 export function setupUI(container) {
   uiOverlay = document.createElement('div');
   uiOverlay.id = 'pong-ui';
-  uiOverlay.style.cssText = `
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: white;
-    z-index: 1000;
-  `;
+  uiOverlay.className = 'pong-ui-overlay';
 
-  // "Skill Activated" call-outs, warped with a CSS 3D tilt, anchored to the
-  // center of each side's half of the table (see positionSkillTextAnchors())
-  // so they sit on the table surface itself instead of floating above it.
+  // "Skill Activated" call-outs, warped with a CSS 3D tilt (see
+  // .pong-skill-text's transform in style.css), anchored to the center of
+  // each side's half of the table (see positionSkillTextAnchors()) so they
+  // sit on the table surface itself instead of floating above it.
   skillTextFar = document.createElement('div');
   skillTextFar.id = 'skill-text-bot';
-  skillTextFar.style.cssText = `
-    position: fixed;
-    left: 0;
-    top: 0;
-    transform: translate(-50%, -50%) ${TABLE_WARP_TRANSFORM};
-    color: #ff5a3c;
-    font-weight: bold;
-    font-size: 16px;
-    text-shadow: 0 0 4px rgba(255, 90, 60, 0.8);
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 0.15s;
-  `;
+  skillTextFar.className = 'pong-skill-text pong-skill-text--far';
   skillTextFar.textContent = 'Skill Activated';
 
   skillTextNear = document.createElement('div');
   skillTextNear.id = 'skill-text-player';
-  skillTextNear.style.cssText = `
-    position: fixed;
-    left: 0;
-    top: 0;
-    transform: translate(-50%, -50%) ${TABLE_WARP_TRANSFORM};
-    color: #ff5a3c;
-    font-weight: bold;
-    font-size: 24px;
-    text-shadow: 0 0 10px rgba(255, 90, 60, 0.8);
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 0.15s;
-  `;
+  skillTextNear.className = 'pong-skill-text pong-skill-text--near';
   skillTextNear.textContent = 'Skill Activated';
 
   abilityPanelDisplay = document.createElement('div');
   abilityPanelDisplay.id = 'ability-panel';
-  abilityPanelDisplay.style.cssText = `
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.7);
-    padding: 10px 20px;
-    border-radius: 10px;
-    backdrop-filter: blur(10px);
-    display: flex;
-    gap: 20px;
-  `;
+  abilityPanelDisplay.className = 'pong-ability-panel';
   abilityPanelDisplay.innerHTML = Object.entries(ABILITY_TYPES)
     .map(
       ([key, ability]) => `
-    <div style="text-align: center;">
-      <div style="font-weight: bold; font-size: 12px;">${ability.name}</div>
-      <div style="opacity: 0.7; font-size: 11px;">${patternHint(ability.pattern)}</div>
-      <div id="cooldown-${key}" style="margin-top: 4px; font-size: 12px; color: #4ade80;">Ready</div>
+    <div class="pong-ability-card">
+      <div class="pong-ability-card__name">${ability.name}</div>
+      <div class="pong-ability-card__hint">${patternHint(ability.pattern)}</div>
+      <div id="cooldown-${key}" class="pong-ability-card__cooldown pong-ability-card__cooldown--ready">Ready</div>
     </div>
   `
     )
     .join('');
 
   // Live debug readout of the raw finger count, near the camera preview
-  // (CameraService places that canvas at top:10px, right:10px, 240x180)
+  // (CameraService places that canvas at top:48px, right:10px, 240x180)
   fingerCountDisplay = document.createElement('div');
   fingerCountDisplay.id = 'finger-count';
-  fingerCountDisplay.style.cssText = `
-    position: absolute;
-    top: 200px;
-    right: 10px;
-    width: 240px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 8px 0;
-    border-radius: 8px;
-    text-align: center;
-    font-size: 13px;
-  `;
-  fingerCountDisplay.innerHTML = `Fingers: <span id="finger-count-value" style="font-weight: bold; color: #ffcc00;">-</span>`;
+  fingerCountDisplay.className = 'pong-finger-panel';
+  fingerCountDisplay.innerHTML = `Fingers: <span id="finger-count-value" class="pong-finger-panel__value">-</span>`;
 
   controlsDisplay = document.createElement('div');
-  controlsDisplay.style.cssText = `
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.6);
-    padding: 10px 20px;
-    border-radius: 12px;
-    font-size: 14px;
-    text-align: center;
-    backdrop-filter: blur(10px);
-    max-width: 600px;
-  `;
+  controlsDisplay.className = 'pong-controls-panel';
   controlsDisplay.innerHTML = `
-    <div style="margin-bottom: 10px;">
+    <div class="pong-controls-panel__title">
       <strong>Hand Pong</strong>
     </div>
-    <div style="opacity: 1; line-height: 1.6;">
+    <div class="pong-controls-panel__hint">
       Move your hand left/right to control the paddle<br>
-      <span style="font-size: 10px; opacity: 0.7;">
+      <span class="pong-controls-panel__small">
         Press SPACE to serve • First to 7 points wins • Hold up finger-count patterns to trigger abilities above
       </span>
     </div>
@@ -212,10 +141,12 @@ export function updateAbilityCooldowns(snapshot) {
     const remaining = snapshot[key] || 0;
     if (remaining <= 0) {
       el.textContent = 'Ready';
-      el.style.color = '#4ade80';
+      el.classList.remove('pong-ability-card__cooldown--active');
+      el.classList.add('pong-ability-card__cooldown--ready');
     } else {
       el.textContent = `${Math.ceil(remaining / 1000)}s`;
-      el.style.color = '#f87171';
+      el.classList.remove('pong-ability-card__cooldown--ready');
+      el.classList.add('pong-ability-card__cooldown--active');
     }
   }
 }

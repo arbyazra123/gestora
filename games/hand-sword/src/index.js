@@ -22,8 +22,8 @@ import {
   combo,
   maxCombo
 } from './game-logic.js';
-import { initHealthMeter, resetHealthMeter } from './health-meter.js';
-import { initBackgroundEffects, animateBackgroundEffects, resetBackgroundEffects } from './background-effects.js';
+import { initHealthMeter, resetHealthMeter, getAccuracy } from './health-meter.js';
+import { initBackgroundEffects, animateBackgroundEffects, resetBackgroundEffects, pulseOnBeat } from './background-effects.js';
 import { cleanupUI } from './ui.js';
 
 export default class HandSwordGame {
@@ -52,6 +52,7 @@ export default class HandSwordGame {
     this.ambientLight = null;
     this.directionalLight = null;
     this.gridHelper = null;
+    this.eqBars = null;
 
     // Hand tracking module
     this.handTrackingModule = null;
@@ -102,6 +103,7 @@ export default class HandSwordGame {
       this.ambientLight = sceneModule.ambientLight;
       this.directionalLight = sceneModule.directionalLight;
       this.gridHelper = sceneModule.gridHelper;
+      this.eqBars = sceneModule.eqBars;
 
       // Setup window resize
       sceneModule.setupWindowResize();
@@ -112,7 +114,9 @@ export default class HandSwordGame {
       // Setup beat scheduler
       setupBeatScheduler(
         () => createBox(this.scene, getCurrentBPM()),
-        getCurrentDifficulty
+        getCurrentDifficulty,
+        () => this.handleTrackEnd(),
+        (beatInfo) => pulseOnBeat(beatInfo)
       );
 
       // Setup hand tracking with platform services
@@ -151,7 +155,8 @@ export default class HandSwordGame {
         this.scene,
         this.ambientLight,
         this.directionalLight,
-        this.gridHelper
+        this.gridHelper,
+        this.eqBars
       );
 
       // Subscribe to MediaPipe hand tracking with handler
@@ -338,6 +343,19 @@ export default class HandSwordGame {
   }
 
   /**
+   * Called when the beat scheduler reaches the end of the track's fixed
+   * length. Multiplayer matches are ended server-side (on disconnect, not
+   * duration yet — see HandSwordRoom) so this only applies solo.
+   */
+  handleTrackEnd() {
+    if (this.wantsMultiplayer) return;
+
+    stopAudio();
+    clearAllBoxes(this.scene);
+    this.uiModule.showResultsOverlay({ score, maxCombo, accuracy: getAccuracy() });
+  }
+
+  /**
    * Called when the player clicks "Play" in multiplayer mode (their audio
    * context is already unlocked by this point — see ui.js's playBtn
    * handler). Joins the match room; the server pairs the first two
@@ -396,6 +414,7 @@ export default class HandSwordGame {
       this.matchState = 'ended';
       const myScore = state.players.get(myId)?.score ?? score;
       this.uiModule.showMatchResult(myScore >= (opponent?.score ?? 0));
+      this.uiModule.unlockControls();
     }
 
     if (opponent) {

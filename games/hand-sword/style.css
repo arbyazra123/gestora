@@ -1,204 +1,436 @@
-body {
-  margin: 0;
-  overflow: hidden;
-  background: #111;
-  font-family: monospace;
+/*
+ * Hand-sword in-game UI styles.
+ *
+ * The DOM this targets is built at runtime by src/ui.js (createUIOverlay())
+ * and injected into document.body — this file is imported from ui.js via
+ * `import '../style.css'` so Vite bundles/injects it regardless of whether
+ * the game runs standalone or federated into the host shell.
+ */
+
+#game-ui-overlay {
+  --neon-cyan: #00ffff;
+  --neon-magenta: #ff00ff;
+  --panel-bg: rgba(8, 8, 20, 0.88);
+  --panel-border: rgba(0, 255, 255, 0.5);
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-#input_video {
-  display: none;
-}
-
-#output_canvas {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 240px;
-  height: 180px;
-  z-index: 10;
-  border: 1px solid #444;
-}
-
-#health-meter {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  width: 200px;
-  height: 150px;
-  z-index: 10;
-  background: rgba(10, 10, 26, 0.8);
-  border: 2px solid rgba(0, 255, 255, 0.3);
-  border-radius: 10px;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
-}
-
-#three-container {
+.ui-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
+  pointer-events: none;
+  z-index: 100;
 }
 
-#score-panel {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  text-align: center;
-}
-
-#score-panel h1 {
-  margin: 0;
-  font-size: 3em;
-  color: #00ffff;
-  text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
-  font-family: monospace;
-  font-weight: bold;
-  letter-spacing: 0.1em;
-}
-
-#score-panel h2 {
-  margin: 10px 0 0 0;
-  font-size: 2em;
-  color: #ff00ff;
-  text-shadow: 0 0 15px #ff00ff, 0 0 30px #ff00ff;
-  font-family: monospace;
-  font-weight: bold;
-  letter-spacing: 0.1em;
-  animation: pulse 0.5s ease-in-out;
-}
-
-#combo-display.hidden {
-  display: none;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-#debug-panel {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  color: #0f0;
-  z-index: 10;
-}
-
-#flip-toggle {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #222;
-  border: 1px solid #0f0;
-  color: #0f0;
-  font-family: monospace;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-#flip-toggle:hover {
-  background: #0f0;
-  color: #111;
-}
-
-#bpm-control {
-  margin-top: 12px;
-}
-
-#bpm-control label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-#bpm-slider {
-  width: 200px;
-  accent-color: #0f0;
-}
-
-#hand-mode-control {
-  margin-top: 12px;
-}
-
-#hand-mode-control label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-#hand-mode-control {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-#difficulty-control {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-#difficulty-control label {
-  margin-right: 4px;
-  font-size: 14px;
-}
-
-#theme-control {
-  margin-top: 12px;
-}
-
-#theme-control label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-#theme-select {
-  width: 200px;
-  padding: 4px;
-  background: #222;
-  border: 1px solid #0f0;
-  color: #0f0;
-  font-family: monospace;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-#theme-select:hover {
-  background: #333;
-}
-
-#playback-controls {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-}
-
+/* ---------- Buttons & select ---------- */
 .control-btn {
-  padding: 8px 16px;
-  background: #222;
-  border: 1px solid #0f0;
-  color: #0f0;
-  font-family: monospace;
-  font-size: 14px;
-  font-weight: bold;
+  padding: 10px 18px;
+  background: rgba(0, 255, 255, 0.08);
+  border: 1.5px solid var(--neon-cyan);
+  border-radius: 999px;
+  color: var(--neon-cyan);
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: all 0.2s;
-  flex: 1;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
 }
 
 .control-btn:hover {
-  background: #0f0;
-  color: #111;
-  transform: scale(1.05);
+  background: rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+}
+
+.control-btn:active {
+  transform: scale(0.96);
 }
 
 .control-btn.active {
-  background: #0f0;
-  color: #111;
-  border-color: #0f0;
+  background: var(--neon-cyan);
+  color: #001014;
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.6);
+}
+
+.control-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .control-btn.hidden {
   display: none;
+}
+
+.control-group {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.control-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 10px 36px 10px 16px;
+  background-color: rgba(0, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2300ffff' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  border: 1.5px solid var(--neon-cyan);
+  border-radius: 999px;
+  color: var(--neon-cyan);
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.control-select:hover,
+.control-select:focus {
+  background-color: rgba(0, 255, 255, 0.16);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+  outline: none;
+}
+
+.control-select option {
+  background: #0a0a1a;
+  color: var(--neon-cyan);
+}
+
+/* ---------- Score / combo HUD (top center) ---------- */
+.score-hud {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.score-hud__score {
+  font-size: 2em;
+  font-weight: bold;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.score-hud__combo {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: var(--neon-magenta);
+  text-shadow: 0 0 10px var(--neon-magenta);
+  margin-top: 10px;
+}
+
+/* ---------- Health meter (bottom right, above the dock) ---------- */
+.health-meter-wrap {
+  position: absolute;
+  bottom: 96px;
+  right: 20px;
+  pointer-events: none;
+}
+
+/* ---------- Bottom-center control dock ---------- */
+.control-dock {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid var(--panel-border);
+  border-radius: 999px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.15);
+  z-index: 101;
+  pointer-events: auto;
+}
+
+.dock-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 64px;
+  height: 56px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--neon-cyan);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.dock-btn:hover {
+  background: rgba(0, 255, 255, 0.12);
+}
+
+.dock-btn:active {
+  transform: scale(0.94);
+}
+
+.dock-btn__icon {
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+.dock-btn__label {
+  font-size: 0.65em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dock-btn.hidden {
+  display: none;
+}
+
+.dock-btn--primary {
+  background: var(--neon-cyan);
+  color: #001014;
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.5);
+}
+
+.dock-btn--primary:hover {
+  background: #33ffff;
+}
+
+/* ---------- Settings panel (opens upward above the dock) ---------- */
+.panel-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.panel-backdrop.expanded {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-panel {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  width: min(90vw, 460px);
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid var(--panel-border);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px rgba(0, 255, 255, 0.15);
+  padding: 20px;
+  z-index: 101;
+  transform: translate(-50%, 12px) scale(0.96);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.settings-panel.expanded {
+  transform: translate(-50%, 0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-panel__header {
+  color: var(--neon-cyan);
+  font-size: 1em;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 0 10px var(--neon-cyan);
+  margin-bottom: 14px;
+}
+
+.settings-panel__grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.bpm-control {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--neon-cyan);
+}
+
+.bpm-control__label {
+  font-size: 0.8em;
+  opacity: 0.8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bpm-control__value {
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+.theme-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 260px;
+}
+
+.theme-control__label {
+  font-size: 0.8em;
+  color: var(--neon-cyan);
+  opacity: 0.8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ---------- Opponent panel (top right, multiplayer) ---------- */
+.opponent-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  text-align: right;
+  pointer-events: none;
+}
+
+.opponent-panel__score {
+  font-size: 1.3em;
+  font-weight: bold;
+  color: var(--neon-magenta);
+  text-shadow: 0 0 10px var(--neon-magenta);
+}
+
+.opponent-panel__combo {
+  font-size: 1em;
+  color: var(--neon-cyan);
+}
+
+/* ---------- Multiplayer status overlay (center) ---------- */
+.multiplayer-overlay {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.multiplayer-overlay__text {
+  font-size: 1.8em;
+  font-weight: bold;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+/* ---------- Results overlay (center) ---------- */
+.results-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--neon-cyan);
+  border-radius: 10px;
+  padding: 30px 50px;
+}
+
+.results-overlay__title {
+  font-size: 1.6em;
+  font-weight: bold;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan);
+  margin-bottom: 15px;
+}
+
+.results-overlay__line {
+  font-size: 1.3em;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.results-overlay__line--combo {
+  color: var(--neon-magenta);
+}
+
+.results-overlay__line--accuracy {
+  color: #00ff88;
+  margin-bottom: 0;
+}
+
+/* ---------- Shared hidden-state toggle ---------- */
+.multiplayer-overlay.hidden,
+.opponent-panel.hidden,
+.results-overlay.hidden {
+  display: none;
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+  .control-btn {
+    padding: 12px 18px;
+    min-height: 44px;
+    font-size: 0.95em;
+  }
+
+  .control-select {
+    padding: 12px 36px 12px 16px;
+    min-height: 44px;
+  }
+
+  .control-dock {
+    bottom: 16px;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .dock-btn {
+    width: 56px;
+    height: 52px;
+  }
+
+  .settings-panel {
+    bottom: 84px;
+    width: min(92vw, 420px);
+    max-height: 55vh;
+  }
+
+  .health-meter-wrap {
+    bottom: 82px;
+    right: 12px;
+    transform: scale(0.7);
+    transform-origin: bottom right;
+  }
+
+  /* Drop the centered score/combo HUD below the host's fixed
+     "Back to Games" button (top:20/left:20, see host/src/ui/GameHub.js)
+     so they don't collide on narrow screens. */
+  .score-hud {
+    top: 76px;
+  }
+
+  .score-hud__score {
+    font-size: 1.4em;
+  }
+
+  .score-hud__combo {
+    font-size: 1.1em;
+  }
 }

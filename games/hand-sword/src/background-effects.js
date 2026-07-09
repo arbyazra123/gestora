@@ -7,6 +7,18 @@ let scene = null;
 let ambientLight = null;
 let directionalLight = null;
 let gridHelper = null;
+let eqBars = null;
+
+// Beat-flash state, layered independently of the combo tint below so the
+// scene reacts to the music from the very first beat, not just after hits.
+// flashBaseAmbient/Directional snapshot whatever the combo system currently
+// has the lights set to at the moment a kick fires, so the flash decays back
+// to "wherever combo effects currently have it" instead of fighting them.
+let beatFlash = 0; // 0..1, decays each frame
+let flashBaseAmbient = 0.3;
+let flashBaseDirectional = 0.8;
+const BEAT_FLASH_DECAY_PER_SEC = 3;
+const BAR_RISE_DECAY_PER_SEC = 4;
 
 // Store original values for reset
 const ORIGINAL_FOG_COLOR = new THREE.Color(0x0a0a1a);
@@ -18,11 +30,36 @@ const ORIGINAL_DIR_INTENSITY = 0.8;
 let pulseTime = 0;
 
 // Initialize with scene references
-export function initBackgroundEffects(sceneRef, ambientLightRef, directionalLightRef, gridHelperRef) {
+export function initBackgroundEffects(sceneRef, ambientLightRef, directionalLightRef, gridHelperRef, eqBarsRef) {
   scene = sceneRef;
   ambientLight = ambientLightRef;
   directionalLight = directionalLightRef;
   gridHelper = gridHelperRef;
+  eqBars = eqBarsRef;
+}
+
+// Called once per scheduled beat (from audio.js's setupBeatScheduler) — pops
+// the grid/lights and a random subset of the EQ-bar skyline, independent of
+// combo level, so the background is never static while music is playing.
+export function pulseOnBeat({ isKick, isSnare, isHihat }) {
+  if (isKick && ambientLight && directionalLight) {
+    flashBaseAmbient = ambientLight.intensity;
+    flashBaseDirectional = directionalLight.intensity;
+    beatFlash = 1;
+  }
+
+  if (!eqBars) return;
+  const activity = (isKick ? 1 : 0) + (isSnare ? 0.5 : 0) + (isHihat ? 0.25 : 0);
+  if (activity === 0) return;
+
+  const popCount = isKick ? 6 : 3;
+  const bars = eqBars.children;
+  for (let n = 0; n < popCount; n++) {
+    const bar = bars[Math.floor(Math.random() * bars.length)];
+    const targetHeight = bar.baseHeight * (1.5 + activity * 1.5);
+    bar.scale.y = Math.max(bar.scale.y, targetHeight);
+    bar.position.y = -2 + bar.scale.y / 2;
+  }
 }
 
 // Update effects based on current combo
@@ -54,6 +91,21 @@ export function updateComboEffects(combo) {
 // Animate pulse effect (call every frame)
 export function animateBackgroundEffects(deltaTime) {
   pulseTime += deltaTime;
+
+  if (beatFlash > 0 && ambientLight && directionalLight) {
+    beatFlash = Math.max(0, beatFlash - BEAT_FLASH_DECAY_PER_SEC * deltaTime);
+    ambientLight.intensity = flashBaseAmbient + beatFlash * 0.3;
+    directionalLight.intensity = flashBaseDirectional + beatFlash * 0.5;
+  }
+
+  if (eqBars) {
+    eqBars.children.forEach((bar) => {
+      if (bar.scale.y > bar.baseHeight) {
+        bar.scale.y = Math.max(bar.baseHeight, bar.scale.y - BAR_RISE_DECAY_PER_SEC * deltaTime);
+        bar.position.y = -2 + bar.scale.y / 2;
+      }
+    });
+  }
 }
 
 function resetEffects() {
@@ -155,5 +207,13 @@ function setLevel5Effects() {
 // Export reset function for use when game resets
 export function resetBackgroundEffects() {
   pulseTime = 0;
+  beatFlash = 0;
   resetEffects();
+
+  if (eqBars) {
+    eqBars.children.forEach((bar) => {
+      bar.scale.y = bar.baseHeight;
+      bar.position.y = -2 + bar.baseHeight / 2;
+    });
+  }
 }

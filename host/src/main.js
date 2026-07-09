@@ -24,27 +24,11 @@ async function initPlatform() {
   } catch (error) {
     console.error('❌ Platform initialization failed:', error);
     document.getElementById('app').innerHTML = `
-      <div style="
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        color: #ff0000;
-        font-family: monospace;
-        text-align: center;
-      ">
+      <div class="platform-error">
         <div>
           <h1>⚠️ Platform Error</h1>
           <p>${error.message}</p>
-          <button onclick="location.reload()" style="
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #ff0000;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-          ">Reload</button>
+          <button class="platform-error__reload-btn" onclick="location.reload()">Reload</button>
         </div>
       </div>
     `;

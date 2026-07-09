@@ -6,11 +6,17 @@
 
 import { mediaPipeService } from './MediaPipeService.js';
 
+// Persisted across game switches/reloads so the preference applies
+// uniformly to every game — GameManager calls showPreview() on every load
+// (see loadGameWithManifest()) without knowing about this preference at all.
+const PREVIEW_VISIBLE_KEY = 'motion-platform:camera-preview-visible';
+
 class CameraService {
   constructor() {
     this.camera = null;
     this.videoElement = null;
     this.canvasElement = null;
+    this.toggleButton = null;
     this.isActive = false;
     this.stream = null;
     this.frameInFlight = null; // tracks the current onFrame's send() calls, if any are still pending
@@ -42,20 +48,29 @@ class CameraService {
       document.body.appendChild(this.videoElement);
     }
 
-    // Create canvas for visualization
+    // Create canvas for visualization. Positioning/sizing (including the
+    // mobile breakpoint) lives in host/style.css under .camera-preview-canvas.
     this.canvasElement = document.getElementById('output_canvas');
     if (!this.canvasElement) {
       this.canvasElement = document.createElement('canvas');
       this.canvasElement.id = 'output_canvas';
-      this.canvasElement.style.position = 'absolute';
-      this.canvasElement.style.top = '10px';
-      this.canvasElement.style.right = '10px';
-      this.canvasElement.style.width = '240px';
-      this.canvasElement.style.height = '180px';
-      this.canvasElement.style.zIndex = '10';
-      this.canvasElement.style.border = '1px solid #444';
+      this.canvasElement.className = 'camera-preview-canvas';
       document.body.appendChild(this.canvasElement);
     }
+
+    // Toggle button sits above the canvas at a fixed position, independent
+    // of the canvas's own responsive size, so it never needs repositioning
+    // and stays reachable even when the preview itself is hidden.
+    this.toggleButton = document.getElementById('camera-toggle-btn');
+    if (!this.toggleButton) {
+      this.toggleButton = document.createElement('button');
+      this.toggleButton.id = 'camera-toggle-btn';
+      this.toggleButton.className = 'camera-toggle-btn';
+      this.toggleButton.setAttribute('aria-label', 'Toggle camera preview');
+      this.toggleButton.addEventListener('click', () => this.toggleCameraPreview());
+      document.body.appendChild(this.toggleButton);
+    }
+    this.updateToggleButtonLabel();
 
     try {
       // Initialize MediaPipe Camera
@@ -105,17 +120,51 @@ class CameraService {
    */
   hidePreview() {
     if (this.canvasElement) {
-      this.canvasElement.style.display = 'none';
+      this.canvasElement.classList.add('hidden');
     }
   }
 
   /**
-   * Show the preview canvas again (e.g. when a game starts)
+   * Show the preview canvas again (e.g. when a game starts). GameManager
+   * calls this unconditionally on every game load — respecting the user's
+   * persisted show/hide preference here (rather than in GameManager) is
+   * what makes the preference apply across every game automatically.
    */
   showPreview() {
-    if (this.canvasElement) {
-      this.canvasElement.style.display = 'block';
+    if (this.canvasElement && this.isPreviewEnabled()) {
+      this.canvasElement.classList.remove('hidden');
     }
+  }
+
+  /**
+   * Whether the user has chosen to see the camera preview (default true).
+   */
+  isPreviewEnabled() {
+    const stored = localStorage.getItem(PREVIEW_VISIBLE_KEY);
+    return stored === null ? true : stored === 'true';
+  }
+
+  /**
+   * Toggle the user's camera preview preference — persisted so it survives
+   * game switches/reloads and applies platform-wide, not just to whichever
+   * game happened to be open when the user clicked the toggle.
+   */
+  toggleCameraPreview() {
+    const nextEnabled = !this.isPreviewEnabled();
+    localStorage.setItem(PREVIEW_VISIBLE_KEY, String(nextEnabled));
+    if (nextEnabled) {
+      this.showPreview();
+    } else {
+      this.hidePreview();
+    }
+    this.updateToggleButtonLabel();
+  }
+
+  updateToggleButtonLabel() {
+    if (!this.toggleButton) return;
+    const enabled = this.isPreviewEnabled();
+    this.toggleButton.textContent = enabled ? '📷' : '🚫';
+    this.toggleButton.title = enabled ? 'Hide camera preview' : 'Show camera preview';
   }
 
   /**

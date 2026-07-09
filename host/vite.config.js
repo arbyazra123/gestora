@@ -31,7 +31,13 @@ export default defineConfig({
     port: 5151,
     strictPort: true,
     cors: true,
+    host: true,
+    // Vite validates the incoming Host header against this list regardless
+    // of server.host — needed for any domain proxied in front of the dev
+    // server (e.g. a Cloudflare tunnel), not just direct localhost access.
+    allowedHosts: ['game.orpheus.my.id'],
     fs: {
+      strict: false,
       // Allow serving files from parent directory (for games)
       allow: ['..']
     }

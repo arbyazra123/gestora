@@ -1,8 +1,23 @@
 import * as Tone from 'tone';
 
 // ---------- TONE.JS AUDIO SYSTEM ----------
-Tone.Transport.bpm.value = 120;
-export let currentBPM = 120;
+
+// Difficulty no longer exposes a free-form BPM slider — each preset bakes
+// in its own fixed tempo, so "Track" + difficulty together determine both
+// speed and spawn density.
+export const DIFFICULTY_PRESETS = {
+  easy: { bpm: 100 },
+  medium: { bpm: 128 },
+  hard: { bpm: 160 },
+};
+
+// A round now has a fixed length (measured in beats, not wall-clock time)
+// so easier/slower difficulties naturally run longer without needing a
+// separate per-difficulty duration.
+export const TRACK_LENGTH_BEATS = 128; // 32 measures
+
+Tone.Transport.bpm.value = DIFFICULTY_PRESETS.medium.bpm;
+export let currentBPM = DIFFICULTY_PRESETS.medium.bpm;
 export let isAudioPlaying = false;
 export let beatCounter = 0;
 
@@ -256,8 +271,13 @@ export function setTheme(themeName) {
 }
 
 // Beat scheduler - accepts callbacks for game logic
-export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty) {
+export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty, onTrackEnd, onBeat) {
   Tone.Transport.scheduleRepeat((time) => {
+    if (beatCounter >= TRACK_LENGTH_BEATS) {
+      if (onTrackEnd) onTrackEnd();
+      return;
+    }
+
     const theme = themes[currentTheme];
     const { chordProgression, bassMelodies, drumPattern } = theme;
 
@@ -286,19 +306,24 @@ export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty) {
     // Drum pattern with difficulty-based box spawning, driven by the
     // current track's own pattern rather than one hardcoded shared pattern
     let shouldSpawnBox = false;
+    const isKick = drumPattern.kick.includes(beatInMeasure);
+    const isSnare = drumPattern.snare.includes(beatInMeasure);
+    const isHihat = drumPattern.hihat.includes(beatInMeasure);
 
-    if (drumPattern.kick.includes(beatInMeasure)) {
+    if (isKick) {
       playKick(time);
       shouldSpawnBox = true; // All difficulties spawn on kick
     }
 
-    if (drumPattern.snare.includes(beatInMeasure)) {
+    if (isSnare) {
       playSnare(time);
     }
 
-    if (drumPattern.hihat.includes(beatInMeasure)) {
+    if (isHihat) {
       playHiHat(time);
     }
+
+    if (onBeat) onBeat({ beatInMeasure, isKick, isSnare, isHihat });
 
     const difficulty = getCurrentDifficulty();
     if (difficulty === 'medium' && drumPattern.mediumFill.includes(beatInMeasure)) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as Tone from 'tone';
-import { playHitSound, playComboBreakSound } from './audio.js';
+import { playHitSound, playComboBreakSound, updateBPM, DIFFICULTY_PRESETS } from './audio.js';
 import { recordHit, recordMiss } from './health-meter.js';
 import { updateComboEffects } from './background-effects.js';
 
@@ -57,6 +57,7 @@ export function setTwoHandMode(value) {
 
 export function setDifficulty(value) {
   currentDifficulty = value;
+  updateBPM(DIFFICULTY_PRESETS[value].bpm);
 }
 
 // ---------- BOX CREATION ----------

@@ -43,7 +43,7 @@ export function recordMiss() {
 }
 
 // Calculate current accuracy (0 to 1)
-function getAccuracy() {
+export function getAccuracy() {
   if (hitHistory.length === 0) return 1; // Start at perfect
 
   const hits = hitHistory.filter(h => h).length;

@@ -1,4 +1,5 @@
-import { updateBPM, startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes, currentBPM } from './audio.js';
+import '../style.css';
+import { startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes, currentBPM } from './audio.js';
 import { setTwoHandMode, setDifficulty, clearAllBoxes, resetScore } from './game-logic.js';
 import { setFlipped, getFlipped, updateHandTrackingMode } from './hand-tracking.js';
 import { resetHealthMeter } from './health-meter.js';
@@ -12,138 +13,130 @@ function createUIOverlay() {
   }
 
   const uiHTML = `
-    <div id="game-ui-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 100;">
-      <!-- Top Controls -->
-      <div class="top-controls" style="position: absolute; top: 80px; left: 20px; display: flex; flex-direction: column; gap: 10px; pointer-events: auto;">
-        <button id="flip-toggle" class="control-btn">Flip: OFF (Direct)</button>
-
-        <div class="bpm-control">
-          <label style="color: #00ffff; font-size: 0.9em;">BPM: <span id="bpm-value">120</span></label>
-          <input type="range" id="bpm-slider" min="60" max="200" value="120" step="10" style="width: 150px;">
-        </div>
-
-        <div class="playback-controls" style="display: flex; gap: 5px;">
-          <button id="play-btn" class="control-btn">▶ Play</button>
-          <button id="pause-btn" class="control-btn hidden">⏸ Pause</button>
-          <button id="reset-btn" class="control-btn">↻ Reset</button>
-        </div>
-
-        <div class="hand-mode-controls" style="display: flex; gap: 5px;">
-          <button id="one-hand-btn" class="control-btn">1 Hand</button>
-          <button id="two-hand-btn" class="control-btn active">2 Hands</button>
-        </div>
-
-        <div class="difficulty-controls" style="display: flex; gap: 5px;">
-          <button id="easy-btn" class="control-btn">Easy</button>
-          <button id="medium-btn" class="control-btn active">Medium</button>
-          <button id="hard-btn" class="control-btn">Hard</button>
-        </div>
-
-        <div class="theme-control">
-          <label style="color: #00ffff; font-size: 0.9em;">Track: <span id="theme-name">Midnight Drive</span></label>
-          <select id="theme-select" class="control-select" style="width: 150px;">
-            <option value="synthwave">Midnight Drive</option>
-            <option value="cyberpunk">Chrome District</option>
-            <option value="chillwave">Ocean Haze</option>
-            <option value="dnb">Breakneck</option>
-          </select>
-        </div>
-      </div>
-
+    <div id="game-ui-overlay" class="ui-overlay">
       <!-- Score Display (Top Center) -->
-      <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;">
-        <div style="font-size: 2em; font-weight: bold; color: #00ffff; text-shadow: 0 0 10px #00ffff;">
+      <div id="score-hud" class="score-hud">
+        <div class="score-hud__score">
           Score: <span id="score-display">0</span>
         </div>
-        <div id="combo-display" style="font-size: 1.5em; font-weight: bold; color: #ff00ff; text-shadow: 0 0 10px #ff00ff; margin-top: 10px;">
+        <div id="combo-display" class="score-hud__combo">
           Combo: 0x
         </div>
       </div>
 
-      <!-- Health Meter (Bottom Right) -->
-      <div style="position: absolute; bottom: 20px; right: 20px; pointer-events: none;">
+      <!-- Health Meter (Bottom Right, above the bottom-center dock) -->
+      <div class="health-meter-wrap">
         <canvas id="health-meter" width="200" height="150"></canvas>
       </div>
 
+      <!-- Settings panel backdrop (click outside to collapse) -->
+      <div id="sidebar-backdrop" class="panel-backdrop"></div>
+
+      <!-- Settings panel — anchored above the dock, opens upward -->
+      <div id="game-sidebar" class="settings-panel">
+        <div class="settings-panel__header">Settings</div>
+        <div class="settings-panel__grid">
+          <button id="flip-toggle" class="control-btn">Flip: OFF (Direct)</button>
+
+          <div class="bpm-control">
+            <span class="bpm-control__label">BPM</span>
+            <span id="bpm-value" class="bpm-control__value">${currentBPM}</span>
+          </div>
+
+          <div class="control-group">
+            <button id="one-hand-btn" class="control-btn">1 Hand</button>
+            <button id="two-hand-btn" class="control-btn active">2 Hands</button>
+          </div>
+
+          <div class="control-group">
+            <button id="easy-btn" class="control-btn">Easy</button>
+            <button id="medium-btn" class="control-btn active">Medium</button>
+            <button id="hard-btn" class="control-btn">Hard</button>
+          </div>
+
+          <div class="theme-control">
+            <label for="theme-select" class="theme-control__label">Track</label>
+            <select id="theme-select" class="control-select">
+              <option value="synthwave">Midnight Drive</option>
+              <option value="cyberpunk">Chrome District</option>
+              <option value="chillwave">Ocean Haze</option>
+              <option value="dnb">Breakneck</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom-center control dock -->
+      <div class="control-dock">
+        <button id="sidebar-toggle" class="dock-btn" aria-label="Toggle settings">
+          <span class="dock-btn__icon">⚙</span>
+          <span class="dock-btn__label">Settings</span>
+        </button>
+        <button id="play-btn" class="dock-btn dock-btn--primary">
+          <span class="dock-btn__icon">▶</span>
+          <span class="dock-btn__label">Play</span>
+        </button>
+        <button id="pause-btn" class="dock-btn dock-btn--primary hidden">
+          <span class="dock-btn__icon">⏸</span>
+          <span class="dock-btn__label">Pause</span>
+        </button>
+        <button id="reset-btn" class="dock-btn">
+          <span class="dock-btn__icon">↻</span>
+          <span class="dock-btn__label">Reset</span>
+        </button>
+      </div>
+
       <!-- Opponent Panel (Top Right) -->
-      <div id="opponent-panel" class="hidden" style="position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none;">
-        <div style="font-size: 1.3em; font-weight: bold; color: #ff00ff; text-shadow: 0 0 10px #ff00ff;">
+      <div id="opponent-panel" class="opponent-panel hidden">
+        <div class="opponent-panel__score">
           Opponent: <span id="opponent-score-display">0</span>
         </div>
-        <div id="opponent-combo-display" style="font-size: 1em; color: #00ffff;">Combo: 0x</div>
+        <div id="opponent-combo-display" class="opponent-panel__combo">Combo: 0x</div>
       </div>
 
       <!-- Multiplayer Status Overlay (Center) -->
-      <div id="multiplayer-overlay" class="hidden" style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none;">
-        <div id="multiplayer-status-text" style="font-size: 1.8em; font-weight: bold; color: #00ffff; text-shadow: 0 0 10px #00ffff;"></div>
+      <div id="multiplayer-overlay" class="multiplayer-overlay hidden">
+        <div id="multiplayer-status-text" class="multiplayer-overlay__text"></div>
+      </div>
+
+      <!-- Results Overlay (Center) -->
+      <div id="results-overlay" class="results-overlay hidden">
+        <div class="results-overlay__title">Track Complete!</div>
+        <div class="results-overlay__line">Score: <span id="results-score">0</span></div>
+        <div class="results-overlay__line results-overlay__line--combo">Max Combo: <span id="results-max-combo">0</span>x</div>
+        <div class="results-overlay__line results-overlay__line--accuracy">Accuracy: <span id="results-accuracy">0</span>%</div>
       </div>
     </div>
   `;
 
   document.body.insertAdjacentHTML('beforeend', uiHTML);
-  injectUIStyles();
-}
-
-// ---------- INJECT UI STYLES ----------
-function injectUIStyles() {
-  if (document.getElementById('game-ui-styles')) return;
-
-  const style = document.createElement('style');
-  style.id = 'game-ui-styles';
-  style.textContent = `
-    .control-btn {
-      padding: 8px 16px;
-      background: rgba(0, 0, 0, 0.7);
-      border: 2px solid #00ffff;
-      border-radius: 5px;
-      color: #00ffff;
-      font-size: 0.9em;
-      font-weight: bold;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-
-    .control-btn:hover {
-      background: #00ffff;
-      color: #000;
-    }
-
-    .control-btn.active {
-      background: #00ffff;
-      color: #000;
-    }
-
-    .control-btn.hidden {
-      display: none;
-    }
-
-    #multiplayer-overlay.hidden,
-    #opponent-panel.hidden {
-      display: none;
-    }
-
-    .control-select {
-      padding: 6px;
-      background: rgba(0, 0, 0, 0.7);
-      border: 2px solid #00ffff;
-      border-radius: 5px;
-      color: #00ffff;
-      font-size: 0.9em;
-      cursor: pointer;
-    }
-
-    input[type="range"] {
-      accent-color: #00ffff;
-    }
-  `;
-
-  document.head.appendChild(style);
 }
 
 // ---------- UI SETUP ----------
 export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions = null) {
   // Create UI overlay if it doesn't exist
   createUIOverlay();
+
+  // Settings sidebar: default expanded on desktop, collapsed on narrow
+  // viewports so mobile starts with a clear view of the play field.
+  const sidebar = document.getElementById('game-sidebar');
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+
+  const setSidebarExpanded = (expanded) => {
+    sidebar.classList.toggle('expanded', expanded);
+    sidebarBackdrop.classList.toggle('expanded', expanded);
+  };
+
+  setSidebarExpanded(!window.matchMedia('(max-width: 768px)').matches);
+
+  sidebarToggle.addEventListener('click', () => {
+    setSidebarExpanded(!sidebar.classList.contains('expanded'));
+  });
+
+  sidebarBackdrop.addEventListener('click', () => {
+    setSidebarExpanded(false);
+  });
 
   // Flip toggle button
   const flipToggle = document.getElementById('flip-toggle');
@@ -153,14 +146,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     flipToggle.textContent = newFlipState ? 'Flip: ON (Mirrored)' : 'Flip: OFF (Direct)';
   });
 
-  // BPM control slider
-  const bpmSlider = document.getElementById('bpm-slider');
   const bpmValue = document.getElementById('bpm-value');
-  bpmSlider.addEventListener('input', (e) => {
-    const newBPM = parseInt(e.target.value);
-    updateBPM(newBPM);
-    bpmValue.textContent = newBPM;
-  });
 
   // Playback control buttons
   const playBtn = document.getElementById('play-btn');
@@ -179,7 +165,19 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
       return;
     }
 
+    // Starting a fresh round after the previous one finished — clear the
+    // results screen and stats rather than resuming (this button is also
+    // reused as "Play Again").
+    if (isResultsShowing()) {
+      hideResultsOverlay();
+      clearAllBoxes(scene);
+      resetScore();
+      resetHealthMeter();
+      resetBackgroundEffects();
+    }
+
     await startAudio();
+    lockControls();
     playBtn.classList.add('hidden');
     pauseBtn.classList.remove('hidden');
   });
@@ -196,6 +194,8 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     resetScore();
     resetHealthMeter();
     resetBackgroundEffects();
+    hideResultsOverlay();
+    unlockControls();
 
     // Hide pause, show play
     pauseBtn.classList.add('hidden');
@@ -251,6 +251,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     easyBtn.classList.add('active');
     mediumBtn.classList.remove('active');
     hardBtn.classList.remove('active');
+    bpmValue.textContent = currentBPM;
   });
 
   mediumBtn.addEventListener('click', () => {
@@ -258,6 +259,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     mediumBtn.classList.add('active');
     easyBtn.classList.remove('active');
     hardBtn.classList.remove('active');
+    bpmValue.textContent = currentBPM;
   });
 
   hardBtn.addEventListener('click', () => {
@@ -265,33 +267,27 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     hardBtn.classList.add('active');
     easyBtn.classList.remove('active');
     mediumBtn.classList.remove('active');
+    bpmValue.textContent = currentBPM;
   });
 
-  // Theme selector
+  // Theme selector — the select itself already displays the chosen
+  // track's label, no separate name readout needed.
   const themeSelect = document.getElementById('theme-select');
-  const themeName = document.getElementById('theme-name');
 
   themeSelect.addEventListener('change', (e) => {
     const newTheme = e.target.value;
-    themeName.textContent = themes[newTheme].name;
-
-    // Re-initialize theme instruments
     setTheme(newTheme);
-
     console.log(`Theme changed to: ${themes[newTheme].name}`);
   });
 }
 
 // ---------- CLEANUP UI ----------
 export function cleanupUI() {
+  // The stylesheet itself is a static import (see top of file) and stays
+  // loaded for the module's lifetime — only the DOM it targets is removed.
   const overlay = document.getElementById('game-ui-overlay');
   if (overlay) {
     overlay.remove();
-  }
-
-  const styles = document.getElementById('game-ui-styles');
-  if (styles) {
-    styles.remove();
   }
 
   clearCountdownInterval();
@@ -350,16 +346,45 @@ export function showMatchResult(won) {
   showMultiplayerOverlay(won ? '🏆 You Win!' : 'Match Ended');
 }
 
+// Controls that don't make sense to change mid-round — Play/Pause toggle
+// via visibility instead, and Reset stays usable as an abort button.
+const LOCKABLE_CONTROL_IDS = ['easy-btn', 'medium-btn', 'hard-btn', 'one-hand-btn', 'two-hand-btn', 'theme-select'];
+
 export function lockControls() {
-  ['bpm-slider', 'easy-btn', 'medium-btn', 'hard-btn', 'theme-select', 'reset-btn'].forEach((id) => {
+  LOCKABLE_CONTROL_IDS.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = true;
   });
 }
 
 export function unlockControls() {
-  ['bpm-slider', 'easy-btn', 'medium-btn', 'hard-btn', 'theme-select', 'reset-btn'].forEach((id) => {
+  LOCKABLE_CONTROL_IDS.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
+}
+
+// ---------- RESULTS OVERLAY ----------
+export function showResultsOverlay({ score, maxCombo, accuracy }) {
+  const overlay = document.getElementById('results-overlay');
+  if (!overlay) return;
+
+  document.getElementById('results-score').textContent = score;
+  document.getElementById('results-max-combo').textContent = maxCombo;
+  document.getElementById('results-accuracy').textContent = Math.round(accuracy * 100);
+  overlay.classList.remove('hidden');
+
+  document.getElementById('pause-btn').classList.add('hidden');
+  document.getElementById('play-btn').classList.remove('hidden');
+  unlockControls();
+}
+
+export function hideResultsOverlay() {
+  const overlay = document.getElementById('results-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+export function isResultsShowing() {
+  const overlay = document.getElementById('results-overlay');
+  return !!overlay && !overlay.classList.contains('hidden');
 }

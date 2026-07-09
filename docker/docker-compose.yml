@@ -14,6 +14,16 @@
 # reinstalled on every container start (see Dockerfile's comment on why).
 #
 # Simulate network latency on the server: SIMULATE_LATENCY_MS=100 docker compose up -d
+#
+# KNOWN ISSUE (Docker Desktop, macOS): on a cold `docker compose up -d` that
+# creates every container in the same instant, the named-volume seed-from-
+# image step can race and fail with:
+#   Error response from daemon: failed to mkdir .../_data/...: file exists
+# Workaround — start one service first so volumes seed one at a time, then
+# bring up the rest:
+#   docker compose up -d host && docker compose up -d
+# If it already failed mid-create, clean up first (volumes are just an
+# npm-install cache, safe to drop): docker compose down -v && docker compose up -d host && docker compose up -d
 
 # Pinned explicitly — Compose otherwise defaults the project name to this
 # directory's basename ("docker"), which can collide with an unrelated
@@ -45,6 +55,12 @@ services:
     command: sh -c "cd host && npm run dev -- --host 0.0.0.0"
     ports:
       - "5151:5151"
+    environment:
+      # Only needed when the game server is reachable at a different public
+      # hostname than the static site (e.g. behind a tunnel) — leave unset
+      # for local/LAN use, where MultiplayerService.js's same-hostname
+      # default already works. Example: VITE_MULTIPLAYER_SERVER_URL=wss://game-ws.orpheus.my.id
+      - VITE_MULTIPLAYER_SERVER_URL=${VITE_MULTIPLAYER_SERVER_URL:-}
 
   hand-sword:
     <<: *app

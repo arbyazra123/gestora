@@ -8,6 +8,7 @@ export let renderer = null;
 export let ambientLight = null;
 export let directionalLight = null;
 export let gridHelper = null;
+export let eqBars = null;
 export let rightSwordGroup = null;
 export let rightBlade = null;
 export let rightHilt = null;
@@ -67,6 +68,33 @@ export function initScene(container) {
   });
   const stars = new THREE.Points(starGeometry, starMaterial);
   scene.add(stars);
+
+  // Background EQ-bar skyline — pulsed per-beat in background-effects.js so
+  // the scene feels alive even before the player lands any hits (combo 0).
+  eqBars = new THREE.Group();
+  const barCount = 20;
+  const barGeometry = new THREE.BoxGeometry(0.6, 1, 0.6);
+  for (let i = 0; i < barCount; i++) {
+    const isEven = i % 2 === 0;
+    const color = isEven ? 0x00ffff : 0xff00ff;
+    const barMaterial = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.6,
+      metalness: 0.3,
+      roughness: 0.4,
+      transparent: true,
+      opacity: 0.85
+    });
+    const bar = new THREE.Mesh(barGeometry, barMaterial);
+    const spread = (i - (barCount - 1) / 2) / barCount; // -0.5..0.5 across the skyline
+    bar.position.set(spread * 40, -1.5, -25 + Math.abs(spread) * -10);
+    bar.baseHeight = 1 + Math.random() * 2;
+    bar.scale.y = bar.baseHeight;
+    bar.position.y = -2 + bar.baseHeight / 2;
+    eqBars.add(bar);
+  }
+  scene.add(eqBars);
 
   // ---------- SWORD CREATION ----------
   // Right hand sword - cyan (pivot at hilt base)
