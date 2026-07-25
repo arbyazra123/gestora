@@ -1,5 +1,5 @@
 import '../style.css';
-import { startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes, currentBPM } from './audio.js';
+import { startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes } from './audio.js';
 import { setTwoHandMode, setDifficulty, clearAllBoxes, resetScore } from './game-logic.js';
 import { setFlipped, getFlipped, updateHandTrackingMode } from './hand-tracking.js';
 import { resetHealthMeter } from './health-meter.js';
@@ -38,11 +38,6 @@ function createUIOverlay() {
         <div class="settings-panel__grid">
           <button id="flip-toggle" class="control-btn">Flip: OFF (Direct)</button>
 
-          <div class="bpm-control">
-            <span class="bpm-control__label">BPM</span>
-            <span id="bpm-value" class="bpm-control__value">${currentBPM}</span>
-          </div>
-
           <div class="control-group">
             <button id="one-hand-btn" class="control-btn">1 Hand</button>
             <button id="two-hand-btn" class="control-btn active">2 Hands</button>
@@ -57,10 +52,13 @@ function createUIOverlay() {
           <div class="theme-control">
             <label for="theme-select" class="theme-control__label">Track</label>
             <select id="theme-select" class="control-select">
-              <option value="synthwave">Midnight Drive</option>
-              <option value="cyberpunk">Chrome District</option>
-              <option value="chillwave">Ocean Haze</option>
-              <option value="dnb">Breakneck</option>
+              <option value="chillwave">Ocean Haze (Easy)</option>
+              <option value="synthwave">Midnight Drive (Medium)</option>
+              <option value="billiejean">Billie Jean (Medium)</option>
+              <option value="sweetchild">Sweet Child O' Mine (Medium)</option>
+              <option value="cyberpunk">Chrome District (Hard)</option>
+              <option value="sevennation">Seven Nation Army (Hard)</option>
+              <option value="dnb">Breakneck (Hard)</option>
             </select>
           </div>
         </div>
@@ -146,14 +144,14 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     flipToggle.textContent = newFlipState ? 'Flip: ON (Mirrored)' : 'Flip: OFF (Direct)';
   });
 
-  const bpmValue = document.getElementById('bpm-value');
-
   // Playback control buttons
   const playBtn = document.getElementById('play-btn');
   const pauseBtn = document.getElementById('pause-btn');
   const resetBtn = document.getElementById('reset-btn');
 
   playBtn.addEventListener('click', async () => {
+    setSidebarExpanded(false);
+
     if (multiplayerOptions?.wantsMultiplayer) {
       // Unlock the audio context now, inside this click's gesture chain —
       // actual transport start is deferred to the server-synced start
@@ -251,7 +249,6 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     easyBtn.classList.add('active');
     mediumBtn.classList.remove('active');
     hardBtn.classList.remove('active');
-    bpmValue.textContent = currentBPM;
   });
 
   mediumBtn.addEventListener('click', () => {
@@ -259,7 +256,6 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     mediumBtn.classList.add('active');
     easyBtn.classList.remove('active');
     hardBtn.classList.remove('active');
-    bpmValue.textContent = currentBPM;
   });
 
   hardBtn.addEventListener('click', () => {
@@ -267,7 +263,6 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     hardBtn.classList.add('active');
     easyBtn.classList.remove('active');
     mediumBtn.classList.remove('active');
-    bpmValue.textContent = currentBPM;
   });
 
   // Theme selector — the select itself already displays the chosen

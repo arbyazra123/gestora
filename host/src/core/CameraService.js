@@ -65,7 +65,7 @@ class CameraService {
     if (!this.toggleButton) {
       this.toggleButton = document.createElement('button');
       this.toggleButton.id = 'camera-toggle-btn';
-      this.toggleButton.className = 'camera-toggle-btn';
+      this.toggleButton.className = 'camera-toggle-btn control-btn';
       this.toggleButton.setAttribute('aria-label', 'Toggle camera preview');
       this.toggleButton.addEventListener('click', () => this.toggleCameraPreview());
       document.body.appendChild(this.toggleButton);
@@ -163,7 +163,7 @@ class CameraService {
   updateToggleButtonLabel() {
     if (!this.toggleButton) return;
     const enabled = this.isPreviewEnabled();
-    this.toggleButton.textContent = enabled ? '📷' : '🚫';
+    this.toggleButton.textContent = enabled ? 'Hide Camera' : 'Show Camera';
     this.toggleButton.title = enabled ? 'Hide camera preview' : 'Show camera preview';
   }
 

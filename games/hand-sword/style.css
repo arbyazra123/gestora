@@ -26,44 +26,6 @@
 }
 
 /* ---------- Buttons & select ---------- */
-.control-btn {
-  padding: 10px 18px;
-  background: rgba(0, 255, 255, 0.08);
-  border: 1.5px solid var(--neon-cyan);
-  border-radius: 999px;
-  color: var(--neon-cyan);
-  font-size: 0.85em;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-}
-
-.control-btn:hover {
-  background: rgba(0, 255, 255, 0.2);
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
-}
-
-.control-btn:active {
-  transform: scale(0.96);
-}
-
-.control-btn.active {
-  background: var(--neon-cyan);
-  color: #001014;
-  box-shadow: 0 0 16px rgba(0, 255, 255, 0.6);
-}
-
-.control-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.control-btn.hidden {
-  display: none;
-}
-
 .control-group {
   display: flex;
   gap: 8px;
@@ -264,25 +226,6 @@
   gap: 14px;
 }
 
-.bpm-control {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  color: var(--neon-cyan);
-}
-
-.bpm-control__label {
-  font-size: 0.8em;
-  opacity: 0.8;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.bpm-control__value {
-  font-size: 1.2em;
-  font-weight: 700;
-}
-
 .theme-control {
   display: flex;
   flex-direction: column;
@@ -384,12 +327,6 @@
 
 /* ---------- Mobile ---------- */
 @media (max-width: 640px) {
-  .control-btn {
-    padding: 12px 18px;
-    min-height: 44px;
-    font-size: 0.95em;
-  }
-
   .control-select {
     padding: 12px 36px 12px 16px;
     min-height: 44px;

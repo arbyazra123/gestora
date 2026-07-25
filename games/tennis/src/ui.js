@@ -9,7 +9,6 @@ let scoreDisplay;
 let gameScoreDisplay;
 let statusDisplay;
 let controlsDisplay;
-let rallyDisplay;
 let fingerCountDisplay;
 let serveChallengeDisplay;
 
@@ -48,11 +47,6 @@ export function setupUI(container) {
   statusDisplay = document.createElement('div');
   statusDisplay.className = 'tt-status';
   statusDisplay.id = 'status-display';
-
-  // Rally counter
-  rallyDisplay = document.createElement('div');
-  rallyDisplay.className = 'tt-rally-panel';
-  rallyDisplay.innerHTML = `Rally: <span id="rally-count">0</span>`;
 
   // Live debug readout of the raw finger count, near the camera preview
   // (CameraService places that canvas at top:10px, right:10px, 240x180)
@@ -109,7 +103,6 @@ export function setupUI(container) {
   uiOverlay.appendChild(scoreDisplay);
   uiOverlay.appendChild(gameScoreDisplay);
   uiOverlay.appendChild(statusDisplay);
-  uiOverlay.appendChild(rallyDisplay);
   uiOverlay.appendChild(fingerCountDisplay);
   uiOverlay.appendChild(serveChallengeDisplay);
   uiOverlay.appendChild(controlsDisplay);
@@ -131,10 +124,6 @@ export function updateScore(playerScore, botScore) {
 export function updateGameScore(playerGames, botGames) {
   document.getElementById('player-games').textContent = playerGames;
   document.getElementById('bot-games').textContent = botGames;
-}
-
-export function updateRallyCount(count) {
-  document.getElementById('rally-count').textContent = count;
 }
 
 export function updateFingerCount(count) {

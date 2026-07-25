@@ -71,7 +71,6 @@ import {
   setupUI,
   updateScore,
   updateGameScore,
-  updateRallyCount,
   updateFingerCount,
   updateSwingDirection,
   updateSmashStatus,
@@ -517,7 +516,6 @@ export default class TableTennisGame {
     const myGames = this.myRole === 'player' ? state.game.playerGames : state.game.botGames;
     const oppGames = this.myRole === 'player' ? state.game.botGames : state.game.playerGames;
     updateGameScore(myGames, oppGames);
-    updateRallyCount(state.game.rallyCount);
 
     // One-shot reactions to actual transitions, edge-detected against the
     // last seen value so they don't re-fire on every unrelated state tick.
@@ -769,7 +767,6 @@ export default class TableTennisGame {
       this.updateMultiplayerGameLogic();
     } else {
       this.updateSoloGameLogic(deltaTime);
-      updateRallyCount(getRallyCount());
     }
 
     // Update UI (debug readouts — harmless/identical in both modes)

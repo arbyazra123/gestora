@@ -113,7 +113,7 @@ export default class HandSwordGame {
 
       // Setup beat scheduler
       setupBeatScheduler(
-        () => createBox(this.scene, getCurrentBPM()),
+        (melodyFreq) => createBox(this.scene, getCurrentBPM(), melodyFreq),
         getCurrentDifficulty,
         () => this.handleTrackEnd(),
         (beatInfo) => pulseOnBeat(beatInfo)

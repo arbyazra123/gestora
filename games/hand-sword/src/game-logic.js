@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import * as Tone from 'tone';
-import { playHitSound, playComboBreakSound, updateBPM, DIFFICULTY_PRESETS } from './audio.js';
+import { playHitSound, playComboBreakSound } from './audio.js';
 import { recordHit, recordMiss } from './health-meter.js';
 import { updateComboEffects } from './background-effects.js';
+import { camera } from './scene.js';
 
 // ---------- GAME STATE ----------
 export let score = 0;
@@ -57,11 +58,10 @@ export function setTwoHandMode(value) {
 
 export function setDifficulty(value) {
   currentDifficulty = value;
-  updateBPM(DIFFICULTY_PRESETS[value].bpm);
 }
 
 // ---------- BOX CREATION ----------
-export function createBox(scene, currentBPM) {
+export function createBox(scene, currentBPM, melodyFreq = null) {
   const colors = [0xff0088, 0x00ffff, 0xff00ff, 0x00ff88];
   const color = colors[Math.floor(Math.random() * colors.length)];
 
@@ -75,14 +75,25 @@ export function createBox(scene, currentBPM) {
 
   const box = new THREE.Mesh(boxGeometry, material);
 
+  // Visible half-width at the hit plane (TARGET_Z), derived from the
+  // camera's actual aspect ratio. On narrow mobile/portrait screens the
+  // horizontal FOV is much smaller than desktop, so the fixed world-unit
+  // ranges below scale down to stay on-screen instead of spawning boxes
+  // past the edge of view.
+  const distanceToTarget = camera.position.z - TARGET_Z;
+  const halfWidth = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect * distanceToTarget;
+
   // Starting position - different patterns based on mode
   if (isTwoHandMode) {
     // 2-hand mode: spawn on left or right (requires both hands)
     const side = Math.random() > 0.5 ? 1 : -1;
-    box.position.x = side * (2 + Math.random() * 2); // 2-4 units from center
+    const minOffset = Math.min(halfWidth * 0.4, 2);
+    const maxOffset = Math.min(halfWidth * 0.8, 4);
+    box.position.x = side * (minOffset + Math.random() * (maxOffset - minOffset)); // capped at 2-4 units on wide screens, scaled down on narrow ones
   } else {
     // 1-hand mode: spawn near center (easier)
-    box.position.x = (Math.random() - 0.5) * 3; // -1.5 to 1.5 from center
+    const maxOffset = Math.min(halfWidth * 0.6, 1.5);
+    box.position.x = (Math.random() - 0.5) * 2 * maxOffset; // capped at -1.5 to 1.5 on wide screens, scaled down on narrow ones
   }
   box.position.y = Math.random() * 4 - 1;
 
@@ -92,6 +103,10 @@ export function createBox(scene, currentBPM) {
   box.arrivalTime = box.spawnTime + (ARRIVAL_BEATS * beatInterval); // Exact time should arrive
   box.startZ = SPAWN_Z;
   box.targetZ = TARGET_Z;
+
+  // Set for boxes spawned from a riffed track's melody grid — carries the
+  // exact note this box should sound when hit (see destroyBox below).
+  box.melodyFreq = melodyFreq;
 
   // Initialize position
   box.position.z = SPAWN_Z;
@@ -239,8 +254,9 @@ export function destroyBox(scene, box, index) {
   // Record hit for health meter
   recordHit();
 
-  // Play hit sound with combo pitch
-  playHitSound();
+  // Play hit sound — this box's own riff note if it has one, otherwise
+  // the default combo-pitched chord hit
+  playHitSound(box.melodyFreq);
 
   // Remove box immediately
   scene.remove(box);

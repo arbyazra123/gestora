@@ -57,7 +57,7 @@ body {
 }
 
 .game-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(247, 228, 228, 0.05);
   border-radius: 15px;
   overflow: hidden;
   border: 2px solid rgba(0, 255, 255, 0.2);
@@ -125,6 +125,45 @@ body {
   border-radius: 12px;
   font-size: 0.8em;
   color: #ff00ff;
+}
+
+/* ---------- Buttons & select ---------- */
+.control-btn {
+  padding: 10px 18px;
+  background: black;
+  border: 1.5px solid white;
+  border-radius: 999px;
+  color: white;
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.control-btn:hover {
+  background: rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+}
+
+.control-btn:active {
+  transform: scale(0.96);
+}
+
+.control-btn.active {
+  background: var(--neon-cyan);
+  color: #001014;
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.6);
+}
+
+.control-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.control-btn.hidden {
+  display: none;
 }
 
 .play-button {
@@ -268,7 +307,7 @@ body {
 /* ---------- Camera preview (shared across every game, CameraService.js) ---------- */
 .camera-preview-canvas {
   position: absolute;
-  top: 48px;
+  top: 58px;
   right: 10px;
   width: 240px;
   height: 180px;
@@ -282,20 +321,18 @@ body {
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 32px;
-  height: 32px;
   z-index: 1000;
-  border-radius: 50%;
-  border: 1px solid #444;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
 }
 
 @media (max-width: 640px) {
   .camera-preview-canvas {
     width: 120px;
     height: 90px;
+  }
+
+  .control-btn {
+    padding: 12px 18px;
+    min-height: 44px;
+    font-size: 0.95em;
   }
 }
