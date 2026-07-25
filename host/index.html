@@ -7,6 +7,17 @@
   <meta name="description" content="Hand-tracking powered games platform" />
   <link rel="stylesheet" href="style.css" />
 
+  <!-- Import map for shared dependencies -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js",
+        "tone": "https://cdn.jsdelivr.net/npm/tone@15.1.0/build/esm/index.js",
+        "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs"
+      }
+    }
+  </script>
+
   <!-- MediaPipe Scripts - Load once on platform start -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
