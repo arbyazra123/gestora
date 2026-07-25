@@ -8,8 +8,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # Railway backend URL (update after Railway deployment)
-  VITE_MULTIPLAYER_SERVER_URL = "wss://your-app.railway.app"
+  # Railway backend URL is set in Netlify dashboard environment variables
+  # VITE_MULTIPLAYER_SERVER_URL will be loaded from dashboard settings
 
 # Build host and all games
 [[redirects]]
