@@ -186,9 +186,15 @@ class GameManager {
     link.id = linkId;
     link.rel = 'stylesheet';
     link.href = cssUrl;
+
+    // Optional: add error handler for CSS loading
+    link.onerror = () => {
+      console.warn(`[GameManager] CSS not found for ${gameId} at ${cssUrl} (this is optional)`);
+    };
+
     document.head.appendChild(link);
 
-    console.log(`[GameManager] Loaded CSS for ${gameId}`);
+    console.log(`[GameManager] Loading CSS for ${gameId}: ${cssUrl}`);
   }
 
   /**

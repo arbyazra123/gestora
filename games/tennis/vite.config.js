@@ -35,16 +35,15 @@ export default defineConfig({
       fileName: 'game'
     },
     rollupOptions: {
-      external: isDev ? [] : ['three'],
-      output: {
-        experimentalMinChunkSize: 10000,
-        manualChunks: isDev ? (id) => {
+      external: isDev ? [] : ['three', 'tslib'],
+      output: isDev ? {
+        manualChunks: (id) => {
           if (id.includes('src/scene')) return 'scene';
           if (id.includes('src/physics')) return 'physics';
           if (id.includes('src/game-logic')) return 'game';
           if (id.includes('src/bot')) return 'bot';
-        } : undefined
-      }
+        }
+      } : {}
     }
   },
   optimizeDeps: {

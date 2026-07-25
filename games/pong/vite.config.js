@@ -39,18 +39,17 @@ export default defineConfig({
       fileName: 'game'
     },
     rollupOptions: {
-      external: isDev ? [] : ['three', 'tone', '@mediapipe/tasks-vision'],
-      output: {
-        experimentalMinChunkSize: 10000,
-        manualChunks: isDev ? (id) => {
+      external: isDev ? [] : ['three', 'tone', 'tslib', '@mediapipe/tasks-vision'],
+      output: isDev ? {
+        manualChunks: (id) => {
           if (id.includes('src/scene')) return 'scene';
           if (id.includes('src/physics')) return 'physics';
           if (id.includes('src/game-logic')) return 'game';
           if (id.includes('src/bot')) return 'bot';
           if (id.includes('src/audio')) return 'audio';
           if (id.includes('src/vision-tracking') || id.includes('@mediapipe/tasks-vision')) return 'vision';
-        } : undefined
-      }
+        }
+      } : {}
     }
   },
   optimizeDeps: {

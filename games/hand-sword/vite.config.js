@@ -39,16 +39,15 @@ export default defineConfig({
       fileName: 'game'
     },
     rollupOptions: {
-      external: isDev ? [] : ['three', 'tone'],
-      output: {
-        experimentalMinChunkSize: 10000,
-        manualChunks: isDev ? (id) => {
+      external: isDev ? [] : ['three', 'tone', 'tslib'],
+      output: isDev ? {
+        manualChunks: (id) => {
           if (id.includes('src/audio')) return 'audio';
           if (id.includes('src/scene')) return 'scene';
           if (id.includes('src/game-logic')) return 'game';
           if (id.includes('src/hand-tracking')) return 'tracking';
-        } : undefined
-      }
+        }
+      } : {}
     }
   },
   optimizeDeps: {
