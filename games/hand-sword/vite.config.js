@@ -39,7 +39,7 @@ export default defineConfig({
       fileName: 'game'
     },
     rollupOptions: {
-      external: isDev ? [] : ['three', 'tone', 'tslib', 'standardized-audio-context', 'automation-events', /^@babel\/runtime/],
+      external: isDev ? [] : ['three'],
       output: isDev ? {
         manualChunks: (id) => {
           if (id.includes('src/audio')) return 'audio';
