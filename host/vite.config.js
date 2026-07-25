@@ -44,24 +44,21 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: false, // Keep console in production for now
-        drop_debugger: true
-      }
-    },
+    minify: 'oxc',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'three-vendor': ['three'],
-          'tone-vendor': ['tone'],
-          'core-services': [
-            './src/core/MediaPipeService.js',
-            './src/core/CameraService.js',
-            './src/core/MultiplayerService.js',
-            './src/core/GameManager.js'
-          ]
+        manualChunks: (id) => {
+          // Vendor chunks for shared libraries
+          if (id.includes('node_modules/three')) {
+            return 'three-vendor';
+          }
+          if (id.includes('node_modules/tone')) {
+            return 'tone-vendor';
+          }
+          // Core services chunk
+          if (id.includes('/src/core/')) {
+            return 'core-services';
+          }
         }
       }
     },
