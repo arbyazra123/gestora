@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getIsTwoHandMode } from './game-logic.js';
+import { getIsTwoHandMode, getMatchMode, getCoopSide } from './game-logic.js';
 
 // MediaPipe globals from CDN scripts (from platform)
 const { HAND_CONNECTIONS } = window;
@@ -33,7 +33,9 @@ function lerp(a, b, t) {
 export function updateHandTrackingMode() {
   if (!mediaPipeService) return;
 
-  const isTwoHandMode = getIsTwoHandMode();
+  // Coop plays 1-handed same as 1-hand mode, just mapped to the assigned
+  // side's sword instead of always the right one (see handleHandTrackingResults).
+  const isTwoHandMode = getMatchMode() !== 'coop' && getIsTwoHandMode();
   mediaPipeService.setOptions({
     maxNumHands: isTwoHandMode ? 2 : 1, // Track 1 or 2 hands based on mode
     modelComplexity: 0, // Fastest model
@@ -210,7 +212,8 @@ export function handleHandTrackingResults(results) {
   let rightHandDetected = false;
   let leftHandDetected = false;
 
-  const isTwoHandMode = getIsTwoHandMode();
+  const matchMode = getMatchMode();
+  const isTwoHandMode = matchMode !== 'coop' && getIsTwoHandMode();
 
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       // Process each detected hand
@@ -258,6 +261,30 @@ export function handleHandTrackingResults(results) {
             leftBlade.material.opacity = 1;
             leftHilt.material.opacity = 1;
           }
+        } else if (matchMode === 'coop') {
+          // Coop: exactly one hand, mapped to our assigned side's sword —
+          // not always the right one, unlike solo 1-hand mode below.
+          const useRight = getCoopSide() !== 'left';
+          const targetGroup = useRight ? rightSwordGroup : leftSwordGroup;
+          const targetBlade = useRight ? rightBlade : leftBlade;
+          const targetHilt = useRight ? rightHilt : leftHilt;
+          const smoothedPosition = useRight ? rightSmoothedPosition : leftSmoothedPosition;
+
+          drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: useRight ? '#00FFFF' : '#FF00FF', lineWidth: 2 });
+          drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', radius: 2 });
+
+          if (useRight) {
+            rightHandDetected = true;
+            if (!wasRightHandDetected) rightFramesSinceRedetection = 0; else rightFramesSinceRedetection++;
+            mapHandToSword(landmarks, targetGroup, targetBlade, targetHilt, smoothedPosition, rightFramesSinceRedetection);
+          } else {
+            leftHandDetected = true;
+            if (!wasLeftHandDetected) leftFramesSinceRedetection = 0; else leftFramesSinceRedetection++;
+            mapHandToSword(landmarks, targetGroup, targetBlade, targetHilt, smoothedPosition, leftFramesSinceRedetection);
+          }
+
+          targetBlade.material.opacity = 1;
+          targetHilt.material.opacity = 1;
         } else {
           // 1-hand mode: always use right sword (cyan), accept any hand
           rightHandDetected = true;

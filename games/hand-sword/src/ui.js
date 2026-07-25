@@ -1,6 +1,6 @@
 import '../style.css';
 import { startAudio, unlockAudioContext, pauseAudio, stopAudio, setTheme, themes } from './audio.js';
-import { setTwoHandMode, setDifficulty, clearAllBoxes, resetScore } from './game-logic.js';
+import { setTwoHandMode, clearAllBoxes, resetScore } from './game-logic.js';
 import { setFlipped, getFlipped, updateHandTrackingMode } from './hand-tracking.js';
 import { resetHealthMeter } from './health-meter.js';
 import { resetBackgroundEffects } from './background-effects.js';
@@ -14,6 +14,11 @@ function createUIOverlay() {
 
   const uiHTML = `
     <div id="game-ui-overlay" class="ui-overlay">
+      <!-- Song Progress (very top, full width) -->
+      <div id="progress-bar-wrap" class="progress-bar-wrap">
+        <div id="progress-bar-fill" class="progress-bar-fill"></div>
+      </div>
+
       <!-- Score Display (Top Center) -->
       <div id="score-hud" class="score-hud">
         <div class="score-hud__score">
@@ -21,6 +26,10 @@ function createUIOverlay() {
         </div>
         <div id="combo-display" class="score-hud__combo">
           Combo: 0x
+        </div>
+        <div class="score-hud__hitmiss">
+          <span class="hitmiss hitmiss--hit">Hits: <span id="hits-display">0</span></span>
+          <span class="hitmiss hitmiss--miss">Misses: <span id="misses-display">0</span></span>
         </div>
       </div>
 
@@ -41,12 +50,6 @@ function createUIOverlay() {
           <div class="control-group">
             <button id="one-hand-btn" class="control-btn">1 Hand</button>
             <button id="two-hand-btn" class="control-btn active">2 Hands</button>
-          </div>
-
-          <div class="control-group">
-            <button id="easy-btn" class="control-btn">Easy</button>
-            <button id="medium-btn" class="control-btn active">Medium</button>
-            <button id="hard-btn" class="control-btn">Hard</button>
           </div>
 
           <div class="theme-control">
@@ -90,10 +93,18 @@ function createUIOverlay() {
           Opponent: <span id="opponent-score-display">0</span>
         </div>
         <div id="opponent-combo-display" class="opponent-panel__combo">Combo: 0x</div>
+        <div class="opponent-panel__hitmiss">
+          <span class="hitmiss hitmiss--hit">Hits: <span id="opponent-hits-display">0</span></span>
+          <span class="hitmiss hitmiss--miss">Misses: <span id="opponent-misses-display">0</span></span>
+        </div>
       </div>
 
       <!-- Multiplayer Status Overlay (Center) -->
       <div id="multiplayer-overlay" class="multiplayer-overlay hidden">
+        <div id="multiplayer-mode-toggle" class="multiplayer-mode-toggle hidden">
+          <button id="mode-versus-btn" class="mode-toggle-btn active">Versus</button>
+          <button id="mode-coop-btn" class="mode-toggle-btn">Co-op</button>
+        </div>
         <div id="multiplayer-status-text" class="multiplayer-overlay__text"></div>
       </div>
 
@@ -103,6 +114,7 @@ function createUIOverlay() {
         <div class="results-overlay__line">Score: <span id="results-score">0</span></div>
         <div class="results-overlay__line results-overlay__line--combo">Max Combo: <span id="results-max-combo">0</span>x</div>
         <div class="results-overlay__line results-overlay__line--accuracy">Accuracy: <span id="results-accuracy">0</span>%</div>
+        <div class="results-overlay__line results-overlay__line--hitmiss">Hits: <span id="results-hits">0</span> &middot; Misses: <span id="results-misses">0</span></div>
       </div>
     </div>
   `;
@@ -144,6 +156,27 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     flipToggle.textContent = newFlipState ? 'Flip: ON (Mirrored)' : 'Flip: OFF (Direct)';
   });
 
+  // Multiplayer mode toggle (Versus/Co-op) — shown only pre-Ready; the
+  // choice is locked in once Ready is clicked (see playBtn handler below).
+  if (multiplayerOptions?.wantsMultiplayer) {
+    const modeToggle = document.getElementById('multiplayer-mode-toggle');
+    const modeVersusBtn = document.getElementById('mode-versus-btn');
+    const modeCoopBtn = document.getElementById('mode-coop-btn');
+    modeToggle.classList.remove('hidden');
+
+    modeVersusBtn.addEventListener('click', () => {
+      modeVersusBtn.classList.add('active');
+      modeCoopBtn.classList.remove('active');
+      multiplayerOptions.onModeChange?.('versus');
+    });
+
+    modeCoopBtn.addEventListener('click', () => {
+      modeCoopBtn.classList.add('active');
+      modeVersusBtn.classList.remove('active');
+      multiplayerOptions.onModeChange?.('coop');
+    });
+  }
+
   // Playback control buttons
   const playBtn = document.getElementById('play-btn');
   const pauseBtn = document.getElementById('pause-btn');
@@ -159,6 +192,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
       await unlockAudioContext();
       playBtn.disabled = true;
       playBtn.textContent = '⏳ Ready';
+      document.getElementById('multiplayer-mode-toggle')?.classList.add('hidden');
       multiplayerOptions.onReady();
       return;
     }
@@ -172,6 +206,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
       resetScore();
       resetHealthMeter();
       resetBackgroundEffects();
+      updateProgressBar(0);
     }
 
     await startAudio();
@@ -192,6 +227,7 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
     resetScore();
     resetHealthMeter();
     resetBackgroundEffects();
+    updateProgressBar(0);
     hideResultsOverlay();
     unlockControls();
 
@@ -234,35 +270,6 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
 
     // Update hand tracking to 2 hands
     updateHandTrackingMode();
-  });
-
-  // Difficulty control buttons
-  const easyBtn = document.getElementById('easy-btn');
-  const mediumBtn = document.getElementById('medium-btn');
-  const hardBtn = document.getElementById('hard-btn');
-
-  // Set initial active state (medium)
-  mediumBtn.classList.add('active');
-
-  easyBtn.addEventListener('click', () => {
-    setDifficulty('easy');
-    easyBtn.classList.add('active');
-    mediumBtn.classList.remove('active');
-    hardBtn.classList.remove('active');
-  });
-
-  mediumBtn.addEventListener('click', () => {
-    setDifficulty('medium');
-    mediumBtn.classList.add('active');
-    easyBtn.classList.remove('active');
-    hardBtn.classList.remove('active');
-  });
-
-  hardBtn.addEventListener('click', () => {
-    setDifficulty('hard');
-    hardBtn.classList.add('active');
-    easyBtn.classList.remove('active');
-    mediumBtn.classList.remove('active');
   });
 
   // Theme selector — the select itself already displays the chosen
@@ -330,20 +337,30 @@ export function showCountdown(startAtEpochMs) {
   countdownIntervalId = setInterval(tick, 200);
 }
 
-export function updateOpponentScore(score, combo) {
+export function updateOpponentScore(score, combo, hits = 0, misses = 0) {
   const scoreEl = document.getElementById('opponent-score-display');
   const comboEl = document.getElementById('opponent-combo-display');
+  const hitsEl = document.getElementById('opponent-hits-display');
+  const missesEl = document.getElementById('opponent-misses-display');
   if (scoreEl) scoreEl.textContent = score;
   if (comboEl) comboEl.textContent = `Combo: ${combo}x`;
+  if (hitsEl) hitsEl.textContent = hits;
+  if (missesEl) missesEl.textContent = misses;
 }
 
-export function showMatchResult(won) {
-  showMultiplayerOverlay(won ? '🏆 You Win!' : 'Match Ended');
+export function showMatchResult({ mode, won, teamScore } = {}) {
+  showMultiplayerOverlay(mode === 'coop' ? `🤝 Team Score: ${teamScore}` : (won ? '🏆 You Win!' : 'Match Ended'));
+}
+
+// ---------- PROGRESS BAR ----------
+export function updateProgressBar(progress) {
+  const fill = document.getElementById('progress-bar-fill');
+  if (fill) fill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
 }
 
 // Controls that don't make sense to change mid-round — Play/Pause toggle
 // via visibility instead, and Reset stays usable as an abort button.
-const LOCKABLE_CONTROL_IDS = ['easy-btn', 'medium-btn', 'hard-btn', 'one-hand-btn', 'two-hand-btn', 'theme-select'];
+const LOCKABLE_CONTROL_IDS = ['one-hand-btn', 'two-hand-btn', 'theme-select'];
 
 export function lockControls() {
   LOCKABLE_CONTROL_IDS.forEach((id) => {
@@ -360,13 +377,15 @@ export function unlockControls() {
 }
 
 // ---------- RESULTS OVERLAY ----------
-export function showResultsOverlay({ score, maxCombo, accuracy }) {
+export function showResultsOverlay({ score, maxCombo, accuracy, hits = 0, misses = 0 }) {
   const overlay = document.getElementById('results-overlay');
   if (!overlay) return;
 
   document.getElementById('results-score').textContent = score;
   document.getElementById('results-max-combo').textContent = maxCombo;
   document.getElementById('results-accuracy').textContent = Math.round(accuracy * 100);
+  document.getElementById('results-hits').textContent = hits;
+  document.getElementById('results-misses').textContent = misses;
   overlay.classList.remove('hidden');
 
   document.getElementById('pause-btn').classList.add('hidden');

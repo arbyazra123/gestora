@@ -1,0 +1,8 @@
+# MediaPipe supports only one active detector type per page
+
+MediaPipe's legacy per-solution WASM bundles cannot be closed and safely re-instantiated in the same page — a second instantiation of even the same type can corrupt shared Emscripten module-level state, and two different types (e.g. `hands` then `face`) cannot coexist in one page's JS realm at all, confirmed even on a first-ever init of a second type after a first type had already been used. This shapes two different parts of the platform:
+
+- **Host**: `MediaPipeService` never closes/recreates Detectors. `GameManager` forces `window.location.reload()` whenever a Game needs a different Tracking Type than whatever's already active, stashing a Pending Game in `sessionStorage` so the platform can auto-relaunch the requested Game after reload.
+- **Pong**: needs both hand and face tracking *simultaneously* (paddle control via head, Abilities via hand gestures) — impossible to satisfy within the shared single-type-per-page system even with a reload. Pong instead runs its own independent MediaPipe Tasks Vision pipeline (`HandLandmarker` + `FaceLandmarker` sharing one WASM runtime — a different MediaPipe API generation than the legacy system), bypassing the shared `MediaPipeService`/`CameraService` entirely. `services.mediaPipe` is still injected into Pong's constructor per the standard Services contract, but Pong doesn't use it.
+
+Any future Game needing simultaneous multi-modal tracking should follow Pong's Tasks Vision pattern rather than requesting multiple Tracking Types from the shared system, which cannot support that regardless of reloads.

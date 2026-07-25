@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import * as Tone from 'tone';
-import { initTheme, setupBeatScheduler, getCurrentBPM, stopAudio, setTheme, updateBPM, beginPlayback, currentTheme } from './audio.js';
+import { initTheme, setupBeatScheduler, getCurrentBPM, stopAudio, setTheme, updateBPM, beginPlayback, currentTheme, beatCounter, TRACK_LENGTH_BEATS } from './audio.js';
 import {
   boxes,
   createBox,
@@ -14,13 +14,16 @@ import {
   destroyBox,
   rightBladeBoundingBox,
   leftBladeBoundingBox,
-  getCurrentDifficulty,
-  setDifficulty,
   clearAllBoxes,
   resetScore,
   score,
   combo,
-  maxCombo
+  maxCombo,
+  hits,
+  misses,
+  setMatchMode,
+  setCoopSide,
+  setCoopSeed
 } from './game-logic.js';
 import { initHealthMeter, resetHealthMeter, getAccuracy } from './health-meter.js';
 import { initBackgroundEffects, animateBackgroundEffects, resetBackgroundEffects, pulseOnBeat } from './background-effects.js';
@@ -61,6 +64,7 @@ export default class HandSwordGame {
     // Multiplayer state
     this.wantsMultiplayer = !!services.launchOptions?.multiplayer;
     this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
+    this.selectedMultiplayerMode = 'versus'; // 'versus' | 'coop' — chosen pre-Ready, see ui.js's mode toggle
     this._onStateChange = null;
     this._onOpponentHand = null;
     this._lastScoreSent = 0;
@@ -114,7 +118,6 @@ export default class HandSwordGame {
       // Setup beat scheduler
       setupBeatScheduler(
         (melodyFreq) => createBox(this.scene, getCurrentBPM(), melodyFreq),
-        getCurrentDifficulty,
         () => this.handleTrackEnd(),
         (beatInfo) => pulseOnBeat(beatInfo)
       );
@@ -133,7 +136,11 @@ export default class HandSwordGame {
 
       // Setup UI
       const multiplayerOptions = this.wantsMultiplayer
-        ? { wantsMultiplayer: true, onReady: () => this.handleReady() }
+        ? {
+          wantsMultiplayer: true,
+          onReady: () => this.handleReady(),
+          onModeChange: (mode) => { this.selectedMultiplayerMode = mode; }
+        }
         : null;
       uiModule.setupUI(this.scene, this.leftSwordGroup, undefined, multiplayerOptions);
 
@@ -268,6 +275,12 @@ export default class HandSwordGame {
     resetScore();
     resetHealthMeter();
     resetBackgroundEffects();
+    // game-logic.js's module state outlives this game instance (module
+    // caching), so a coop match's mode/side must not leak into the next
+    // launch — otherwise a later solo/versus round would silently keep
+    // running coop's side-restricted collision logic.
+    setMatchMode('solo');
+    setCoopSide(null);
 
     // Cleanup UI overlay
     cleanupUI();
@@ -332,11 +345,18 @@ export default class HandSwordGame {
     // Render scene
     this.renderer.render(this.scene, this.camera3d);
 
-    // Relay score/combo to the opponent while a match is live
+    // Song progress — box spawn timing (and therefore beatCounter) is
+    // driven entirely by the beat scheduler, so this is just its ratio
+    // against the track's fixed length.
+    if (this.uiModule?.updateProgressBar) {
+      this.uiModule.updateProgressBar(Math.min(1, beatCounter / TRACK_LENGTH_BEATS));
+    }
+
+    // Relay score/combo/hits/misses to the opponent while a match is live
     if (this.wantsMultiplayer && this.matchState === 'playing') {
       const now = performance.now();
       if (now - this._lastScoreSent > 150) {
-        this.multiplayer.sendGameState({ score, combo, maxCombo });
+        this.multiplayer.sendGameState({ score, combo, maxCombo, hits, misses });
         this._lastScoreSent = now;
       }
     }
@@ -352,7 +372,7 @@ export default class HandSwordGame {
 
     stopAudio();
     clearAllBoxes(this.scene);
-    this.uiModule.showResultsOverlay({ score, maxCombo, accuracy: getAccuracy() });
+    this.uiModule.showResultsOverlay({ score, maxCombo, accuracy: getAccuracy(), hits, misses });
   }
 
   /**
@@ -369,8 +389,8 @@ export default class HandSwordGame {
       await this.multiplayer.connect();
       await this.multiplayer.joinRoom('hand-sword', {
         bpm: getCurrentBPM(),
-        difficulty: getCurrentDifficulty(),
-        theme: currentTheme
+        theme: currentTheme,
+        mode: this.selectedMultiplayerMode
       });
 
       this.matchState = 'waiting';
@@ -394,12 +414,26 @@ export default class HandSwordGame {
 
       // Apply the room's locked match settings to the local UI/state —
       // only when they actually differ. setTheme() re-initializes Tone.js
-      // instruments, which stomps the already-scheduled beat repeat's
+      // instruments (and applies the track's own difficulty/bpm — see
+      // audio.js), which stomps the already-scheduled beat repeat's
       // internal time bookkeeping if called redundantly (harmless-looking
       // but throws inside Tone's scheduler once playback starts).
-      if (state.difficulty !== getCurrentDifficulty()) setDifficulty(state.difficulty);
       if (state.theme !== currentTheme) setTheme(state.theme);
       if (state.bpm !== getCurrentBPM()) updateBPM(state.bpm);
+
+      // Lock in Match Mode and, for coop, our assigned side + the shared
+      // box-spawn seed (see game-logic.js's coop branch of createBox()).
+      setMatchMode(state.mode);
+      if (state.mode === 'coop') {
+        setCoopSeed(state.coopSeed);
+        const mySide = state.players.get(myId)?.side ?? 'left';
+        setCoopSide(mySide);
+        // We only have a hand on our own side — hide the other sword
+        // rather than leave it idle in the scene.
+        if (mySide === 'left') this.rightSwordGroup.visible = false;
+        else this.leftSwordGroup.visible = false;
+      }
+      this.handTrackingModule.updateHandTrackingMode();
 
       this.uiModule.showCountdown(state.startAt);
 
@@ -413,12 +447,17 @@ export default class HandSwordGame {
     if (state.status === 'ended' && this.matchState !== 'ended') {
       this.matchState = 'ended';
       const myScore = state.players.get(myId)?.score ?? score;
-      this.uiModule.showMatchResult(myScore >= (opponent?.score ?? 0));
+      const opponentScore = opponent?.score ?? 0;
+      this.uiModule.showMatchResult(
+        state.mode === 'coop'
+          ? { mode: 'coop', teamScore: myScore + opponentScore }
+          : { mode: 'versus', won: myScore >= opponentScore }
+      );
       this.uiModule.unlockControls();
     }
 
     if (opponent) {
-      this.uiModule.updateOpponentScore(opponent.score, opponent.combo);
+      this.uiModule.updateOpponentScore(opponent.score, opponent.combo, opponent.hits, opponent.misses);
     }
   }
 

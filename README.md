@@ -293,7 +293,6 @@ multiplayerService.isConnectedToServer()
   - 4 music themes (Synthwave, Cyberpunk, Chillwave, Drum & Bass)
   - Combo system with background effects
   - Health/accuracy meter
-  - Difficulty levels (Easy/Medium/Hard)
   - 1-hand or 2-hand mode
 
 ## 🚧 Roadmap

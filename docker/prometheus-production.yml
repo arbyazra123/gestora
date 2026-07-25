@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Local development server (Docker)
+  - job_name: motion-platform-local
+    static_configs:
+      - targets: ["server:2567"]
+    metrics_path: /metrics
+
+  # Production Railway server
+  - job_name: motion-platform-production
+    static_configs:
+      - targets: ["manuver-api.orpheus.my.id:443"]
+    scheme: https
+    metrics_path: /metrics

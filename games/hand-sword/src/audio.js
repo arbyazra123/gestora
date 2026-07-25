@@ -2,11 +2,14 @@ import * as Tone from 'tone';
 
 // ---------- TONE.JS AUDIO SYSTEM ----------
 
-// Tempo is intrinsic to the track, not the difficulty — a cover needs to
-// run at (close to) its real-world BPM to actually sound like the song, and
+// Tempo is intrinsic to the track, not difficulty — a cover needs to run
+// at (close to) its real-world BPM to actually sound like the song, and
 // speeding up something as melodic as "Sweet Child O' Mine" to a "hard"
-// tempo just makes it stop sounding like the song. Difficulty now only
-// controls spawn density (see drumPattern.mediumFill / 'hard' below).
+// tempo just makes it stop sounding like the song. Difficulty is likewise
+// a property of the track (theme.difficulty below), not a separate player
+// choice — it controls spawn density (see drumPattern.mediumFill / 'hard'
+// below), and a track's own difficulty is already implied by its tempo and
+// arrangement, so a second independent knob was redundant.
 export const DEFAULT_BPM = 128;
 
 // A round now has a fixed length (measured in beats, not wall-clock time)
@@ -27,6 +30,7 @@ export let beatCounter = 0;
 export const themes = {
   synthwave: {
     name: 'Midnight Drive',
+    difficulty: 'medium',
     bpm: 128,
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // i - VI - III - VII in D minor: a melancholic, driving retro feel
@@ -47,6 +51,7 @@ export const themes = {
   },
   cyberpunk: {
     name: 'Chrome District',
+    difficulty: 'hard',
     bpm: 150,
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // i - VI - III - VII in E minor: darker, driving
@@ -67,6 +72,7 @@ export const themes = {
   },
   chillwave: {
     name: 'Ocean Haze',
+    difficulty: 'easy',
     bpm: 95,
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // I - vi - ii - V in C major: warm, circulating chill loop
@@ -87,6 +93,7 @@ export const themes = {
   },
   dnb: {
     name: 'Breakneck',
+    difficulty: 'hard',
     bpm: 170,
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // Original I - vi - IV - V progression, unchanged
@@ -111,6 +118,7 @@ export const themes = {
   // synthesized instruments as the tracks above (no sampled audio).
   sweetchild: {
     name: "Sweet Child O' Mine",
+    difficulty: 'medium',
     bpm: 125, // the real song's tempo — this riff is melodic, not fast
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // D - C - G - D: the iconic riff progression, recreated in D major
@@ -141,6 +149,7 @@ export const themes = {
   },
   sevennation: {
     name: 'Seven Nation Army',
+    difficulty: 'hard',
     bpm: 124, // the real song's tempo
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // Em - D - C - B: the famous descending riff, recreated as a chord loop
@@ -167,6 +176,7 @@ export const themes = {
   },
   billiejean: {
     name: 'Billie Jean',
+    difficulty: 'medium',
     bpm: 117, // the real song's tempo
     kick: null, snare: null, hihat: null, bass: null, lead: null, pad: null,
     // F#m - E - D#m - C#: the descending bassline that drives the whole song
@@ -438,9 +448,8 @@ export function setTheme(themeName) {
   currentTheme = themeName;
   initTheme(themeName);
 
-  // Tempo belongs to the track now, not the difficulty — switching tracks
-  // switches tempo too, so a cover actually plays at (close to) the real
-  // song's speed regardless of which difficulty is selected.
+  // Tempo belongs to the track, so switching tracks switches tempo too —
+  // a cover actually plays at (close to) the real song's speed.
   updateBPM(themes[themeName].bpm);
 
   // Reset progression state so switching mid-song doesn't carry over an
@@ -452,7 +461,7 @@ export function setTheme(themeName) {
 }
 
 // Beat scheduler - accepts callbacks for game logic
-export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty, onTrackEnd, onBeat) {
+export function setupBeatScheduler(onBoxSpawn, onTrackEnd, onBeat) {
   Tone.Transport.scheduleRepeat((time) => {
     if (beatCounter >= TRACK_LENGTH_BEATS) {
       if (onTrackEnd) onTrackEnd();
@@ -509,11 +518,10 @@ export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty, onTrackEnd,
 
     if (onBeat) onBeat({ beatInMeasure, isKick, isSnare, isHihat });
 
-    const difficulty = getCurrentDifficulty();
     if (!theme.riffed) {
-      if (difficulty === 'medium' && drumPattern.mediumFill.includes(beatInMeasure)) {
+      if (theme.difficulty === 'medium' && drumPattern.mediumFill.includes(beatInMeasure)) {
         shouldSpawnBox = true;
-      } else if (difficulty === 'hard') {
+      } else if (theme.difficulty === 'hard') {
         shouldSpawnBox = true;
       }
     }
@@ -547,13 +555,12 @@ export function setupBeatScheduler(onBoxSpawn, getCurrentDifficulty, onTrackEnd,
     if (degree !== null) {
       const freq = degree === 3 ? currentChord[0] * 2 : currentChord[degree];
 
-      // Sample the riff grid at a coarser stride for lower difficulties so
-      // "easy" still gets a manageable box rate — same idea as
-      // drumPattern.mediumFill above, just on a 16-step grid instead of 4.
-      // At "hard" every note in the riff becomes a box, so hitting a full
-      // measure cleanly plays the whole riff exactly as written.
-      const difficulty = getCurrentDifficulty();
-      const stride = difficulty === 'hard' ? 1 : difficulty === 'medium' ? 2 : 4;
+      // Sample the riff grid at a coarser stride for the track's own
+      // easier difficulty so it still gets a manageable box rate — same
+      // idea as drumPattern.mediumFill above, just on a 16-step grid
+      // instead of 4. At "hard" every note in the riff becomes a box, so
+      // hitting a full measure cleanly plays the whole riff exactly as written.
+      const stride = theme.difficulty === 'hard' ? 1 : theme.difficulty === 'medium' ? 2 : 4;
 
       if (riffStep % stride === 0) {
         // This note is carried by a box instead of playing automatically —

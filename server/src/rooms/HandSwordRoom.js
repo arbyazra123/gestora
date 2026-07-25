@@ -9,15 +9,24 @@ const PlayerState = schema({
   score: 'number',
   combo: 'number',
   maxCombo: 'number',
+  hits: 'number',
+  misses: 'number',
+  side: 'string', // 'left' | 'right' | '' — only meaningful when MatchState.mode === 'coop'
   connected: 'boolean'
 });
 
 const MatchState = schema({
   status: 'string', // "waiting" | "countdown" | "playing" | "ended"
+  mode: 'string', // 'versus' | 'coop'
   bpm: 'number',
-  difficulty: 'string',
-  theme: 'string',
+  theme: 'string', // difficulty is a fixed property of the theme, not a separate synced field — see games/hand-sword/src/audio.js
   startAt: 'number', // epoch ms; 0 until countdown begins
+  // Shared seed for coop's client-side box-side PRNG (see game-logic.js) —
+  // box spawn *timing* is already fully deterministic from bpm/difficulty/
+  // theme/beat count, so this one seed is all that's needed for both
+  // clients to independently spawn an identical sequence of boxes without
+  // the server owning box state itself (HandSwordRoom stays a Relay Room).
+  coopSeed: 'number',
   players: { map: PlayerState }
 });
 
@@ -29,12 +38,14 @@ export class HandSwordRoom extends Room {
   onCreate(options = {}) {
     // First player's currently-selected local settings become the match's
     // locked settings — no settings-negotiation UI is in scope here.
+    const mode = options.mode === 'coop' ? 'coop' : 'versus';
     this.state = new MatchState({
       status: 'waiting',
+      mode,
       bpm: options.bpm ?? 120,
-      difficulty: options.difficulty ?? 'medium',
       theme: options.theme ?? 'synthwave',
       startAt: 0,
+      coopSeed: mode === 'coop' ? Math.floor(Math.random() * 2 ** 31) : 0,
       players: new MapSchema()
     });
 
@@ -44,6 +55,8 @@ export class HandSwordRoom extends Room {
       player.score = payload.score ?? player.score;
       player.combo = payload.combo ?? player.combo;
       player.maxCombo = payload.maxCombo ?? player.maxCombo;
+      player.hits = payload.hits ?? player.hits;
+      player.misses = payload.misses ?? player.misses;
     });
 
     this.onMessage('hand_data', (client, data) => {
@@ -62,11 +75,20 @@ export class HandSwordRoom extends Room {
   }
 
   onJoin(client) {
+    // Join order decides side in coop, same pattern as TennisRoom's role
+    // assignment — first joiner takes the left side.
+    const side = this.state.mode === 'coop'
+      ? (this.state.players.size === 0 ? 'left' : 'right')
+      : '';
+
     this.state.players.set(client.sessionId, new PlayerState({
       sessionId: client.sessionId,
       score: 0,
       combo: 0,
       maxCombo: 0,
+      hits: 0,
+      misses: 0,
+      side,
       connected: true
     }));
     clientsConnected.inc({ room: ROOM_LABEL });

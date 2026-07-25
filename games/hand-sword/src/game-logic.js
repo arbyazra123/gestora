@@ -9,13 +9,60 @@ import { camera } from './scene.js';
 export let score = 0;
 export let combo = 0;
 export let maxCombo = 0;
+export let hits = 0;
+export let misses = 0;
 export let isTwoHandMode = true; // Default to 2-hand mode
-export let currentDifficulty = 'medium'; // easy, medium, hard
+
+// ---------- MULTIPLAYER MATCH MODE ----------
+// 'solo' outside multiplayer; 'versus' or 'coop' once a Match locks in a mode
+// (see index.js's handleMatchStateChange). Coop restricts each client to its
+// assigned side (see checkCollision/updateBoxes below) and plays 1-handed.
+export let matchMode = 'solo';
+export let coopSide = null; // 'left' | 'right' | null
+
+// Tiny seeded PRNG (mulberry32) so both coop clients draw the exact same
+// sequence of box sides — box spawn *timing* is already fully deterministic
+// from bpm/difficulty/theme/beat count (see audio.js's setupBeatScheduler),
+// so this one synced seed is enough for a genuinely shared board without
+// the server owning box state (HandSwordRoom stays a Relay Room).
+let coopRng = null;
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function getMatchMode() {
+  return matchMode;
+}
+
+export function setMatchMode(value) {
+  matchMode = value;
+}
+
+export function getCoopSide() {
+  return coopSide;
+}
+
+export function setCoopSide(value) {
+  coopSide = value;
+}
+
+export function setCoopSeed(seed) {
+  coopRng = mulberry32(seed);
+}
 
 // UI elements - lazy initialized
 let scoreElement = null;
 let comboElement = null;
 let comboDisplay = null;
+let hitsElement = null;
+let missesElement = null;
 
 // Helper to get UI elements (lazy initialization)
 function getUIElements() {
@@ -23,8 +70,10 @@ function getUIElements() {
     scoreElement = document.getElementById('score-display');
     comboElement = document.getElementById('combo');
     comboDisplay = document.getElementById('combo-display');
+    hitsElement = document.getElementById('hits-display');
+    missesElement = document.getElementById('misses-display');
   }
-  return { scoreElement, comboElement, comboDisplay };
+  return { scoreElement, comboElement, comboDisplay, hitsElement, missesElement };
 }
 
 // ---------- BOXES (cubes) ----------
@@ -43,10 +92,6 @@ export const leftBladeBoundingBox = new THREE.Box3();
 const boxBoundingBox = new THREE.Box3();
 
 // Getters for state
-export function getCurrentDifficulty() {
-  return currentDifficulty;
-}
-
 export function getIsTwoHandMode() {
   return isTwoHandMode;
 }
@@ -54,10 +99,6 @@ export function getIsTwoHandMode() {
 // Setters for state
 export function setTwoHandMode(value) {
   isTwoHandMode = value;
-}
-
-export function setDifficulty(value) {
-  currentDifficulty = value;
 }
 
 // ---------- BOX CREATION ----------
@@ -84,14 +125,28 @@ export function createBox(scene, currentBPM, melodyFreq = null) {
   const halfWidth = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect * distanceToTarget;
 
   // Starting position - different patterns based on mode
-  if (isTwoHandMode) {
+  if (matchMode === 'coop') {
+    // Coop: shared board — side and x-offset are drawn from the seeded
+    // PRNG (not Math.random()) so both clients agree on which side (and
+    // therefore which player is responsible) each box belongs to. Y/
+    // rotation stay per-client Math.random() — purely cosmetic, no
+    // gameplay reason to sync those.
+    const rand = coopRng || Math.random;
+    box.side = rand() > 0.5 ? 'right' : 'left';
+    const side = box.side === 'right' ? 1 : -1;
+    const minOffset = Math.min(halfWidth * 0.4, 2);
+    const maxOffset = Math.min(halfWidth * 0.8, 4);
+    box.position.x = side * (minOffset + rand() * (maxOffset - minOffset));
+  } else if (isTwoHandMode) {
     // 2-hand mode: spawn on left or right (requires both hands)
     const side = Math.random() > 0.5 ? 1 : -1;
+    box.side = side === 1 ? 'right' : 'left';
     const minOffset = Math.min(halfWidth * 0.4, 2);
     const maxOffset = Math.min(halfWidth * 0.8, 4);
     box.position.x = side * (minOffset + Math.random() * (maxOffset - minOffset)); // capped at 2-4 units on wide screens, scaled down on narrow ones
   } else {
     // 1-hand mode: spawn near center (easier)
+    box.side = null;
     const maxOffset = Math.min(halfWidth * 0.6, 1.5);
     box.position.x = (Math.random() - 0.5) * 2 * maxOffset; // capped at -1.5 to 1.5 on wide screens, scaled down on narrow ones
   }
@@ -111,19 +166,8 @@ export function createBox(scene, currentBPM, melodyFreq = null) {
   // Initialize position
   box.position.z = SPAWN_Z;
 
-  // Add random rotation for visual variety
-  box.rotation.set(
-    Math.random() * Math.PI,
-    Math.random() * Math.PI,
-    Math.random() * Math.PI
-  );
-
-  // Store rotation speed for animation
-  box.rotationSpeed = {
-    x: (Math.random() - 0.5) * 0.02,
-    y: (Math.random() - 0.5) * 0.02,
-    z: (Math.random() - 0.5) * 0.02
-  };
+  // No rotation — box stays face-on to the player for the whole flight
+  // instead of tumbling, so its approach is easier to read.
 
   scene.add(box);
   boxes.push(box);
@@ -160,6 +204,12 @@ function updateComboDisplay() {
   }
 }
 
+function updateHitMissDisplay() {
+  const { hitsElement, missesElement } = getUIElements();
+  if (hitsElement) hitsElement.textContent = hits;
+  if (missesElement) missesElement.textContent = misses;
+}
+
 function increaseCombo() {
   combo++;
   if (combo > maxCombo) {
@@ -179,17 +229,29 @@ export function resetCombo() {
 export function resetScore() {
   score = 0;
   combo = 0;
+  hits = 0;
+  misses = 0;
   const { scoreElement } = getUIElements();
   if (scoreElement) {
     scoreElement.textContent = score;
   }
   updateComboDisplay();
+  updateHitMissDisplay();
 }
 
 // ---------- COLLISION DETECTION ----------
 export function checkCollision(box, rightBladeBounds, leftBladeBounds) {
   // Use pre-calculated sword bounds from animate loop
   boxBoundingBox.setFromObject(box);
+
+  if (matchMode === 'coop') {
+    // Coop: the partner's side is visible (shared board) but not ours to
+    // hit — only test our own assigned-side blade against our own boxes.
+    if (box.side !== coopSide) return false;
+    return coopSide === 'right'
+      ? rightBladeBounds.intersectsBox(boxBoundingBox)
+      : leftBladeBounds.intersectsBox(boxBoundingBox);
+  }
 
   // In 1-hand mode, only check right sword
   if (!isTwoHandMode) {
@@ -253,6 +315,8 @@ export function destroyBox(scene, box, index) {
 
   // Record hit for health meter
   recordHit();
+  hits++;
+  updateHitMissDisplay();
 
   // Play hit sound — this box's own riff note if it has one, otherwise
   // the default combo-pitched chord hit
@@ -281,17 +345,18 @@ export function updateBoxes(scene) {
     // Lerp from start to target based on time progress
     box.position.z = box.startZ + (box.targetZ - box.startZ) * progress;
 
-    // Rotate box for visual effect
-    if (box.rotationSpeed) {
-      box.rotation.x += box.rotationSpeed.x;
-      box.rotation.y += box.rotationSpeed.y;
-      box.rotation.z += box.rotationSpeed.z;
-    }
-
     // Remove if passed camera (MISS - reset combo)
     if (box.position.z > MISS_Z) {
-      resetCombo(); // Break combo on miss
-      recordMiss(); // Record miss for health meter
+      // Coop: a box on the partner's side isn't ours to answer for — it's
+      // still removed here (each client independently runs the full,
+      // identically-seeded board), but doesn't touch our own combo/health/
+      // miss count. The partner's own client independently records it.
+      if (matchMode !== 'coop' || box.side === coopSide) {
+        resetCombo(); // Break combo on miss
+        recordMiss(); // Record miss for health meter
+        misses++;
+        updateHitMissDisplay();
+      }
       scene.remove(box);
       boxes.splice(i, 1);
     }
