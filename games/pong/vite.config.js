@@ -39,7 +39,7 @@ export default defineConfig({
       fileName: 'game'
     },
     rollupOptions: {
-      external: isDev ? [] : ['three', 'tone', 'tslib', 'standardized-audio-context', '@mediapipe/tasks-vision'],
+      external: isDev ? [] : ['three', 'tone', 'tslib', 'standardized-audio-context', 'automation-events', /^@babel\/runtime/, '@mediapipe/tasks-vision'],
       output: isDev ? {
         manualChunks: (id) => {
           if (id.includes('src/scene')) return 'scene';
