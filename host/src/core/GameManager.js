@@ -110,8 +110,12 @@ class GameManager {
       await cameraService.init();
       cameraService.showPreview();
 
+      // Load game CSS if in production
+      if (!import.meta.env.DEV) {
+        this.loadGameCSS(gameId, manifest);
+      }
+
       // Dynamic import the game module
-      // Note: In production, this would use the remoteEntry URL from manifest
       const GameModule = await this.importGameModule(gameId, manifest);
 
       // Clear container
@@ -148,8 +152,8 @@ class GameManager {
 
   /**
    * Import game module dynamically
-   * In development: imports from local games folder
-   * In production: imports the remoteEntry which exposes the game module
+   * In development: imports from local games folder with Module Federation
+   * In production: imports built library (game.js) directly
    */
   async importGameModule(gameId, manifest) {
     // Development mode - import from local folder using alias
@@ -157,44 +161,34 @@ class GameManager {
       return await import(`@games/${gameId}/src/index.js`);
     }
 
-    // Production mode - import the remoteEntry.js which has the exposed Game module
-    // The remoteEntry.js is a self-contained ES module that exports the Game class
-    const remoteEntry = manifest.production || manifest.remoteEntry;
-
-    try {
-      // Import the remoteEntry module directly
-      const module = await import(/* @vite-ignore */ remoteEntry);
-
-      // The module should have a default export (the Game class)
-      // or we need to get it from the federation container
-      if (module.default) {
-        return module;
-      }
-
-      // If using Module Federation, get the exposed module
-      const remoteName = this.getRemoteName(gameId);
-      if (module.get) {
-        const factory = await module.get('./Game');
-        return factory();
-      }
-
-      throw new Error('Game module not found in remoteEntry');
-    } catch (error) {
-      console.error(`[GameManager] Failed to import game module:`, error);
-      throw error;
-    }
+    // Production mode - import the built library directly
+    // Games are built as ES modules with default export (the Game class)
+    const gameUrl = manifest.production || manifest.remoteEntry;
+    return await import(/* @vite-ignore */ gameUrl);
   }
 
   /**
-   * Get the remote container name for a game
+   * Load game CSS in production
    */
-  getRemoteName(gameId) {
-    const nameMap = {
-      'hand-sword': 'handSword',
-      'tennis': 'tennis',
-      'pong': 'pong'
-    };
-    return nameMap[gameId] || gameId;
+  loadGameCSS(gameId, manifest) {
+    // Get CSS URL (same directory as game.js)
+    const gameUrl = manifest.production || manifest.remoteEntry;
+    const cssUrl = gameUrl.replace(/game\.js$/, 'style.css');
+
+    // Check if already loaded
+    const linkId = `game-css-${gameId}`;
+    if (document.getElementById(linkId)) {
+      return;
+    }
+
+    // Create and append link element
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.rel = 'stylesheet';
+    link.href = cssUrl;
+    document.head.appendChild(link);
+
+    console.log(`[GameManager] Loaded CSS for ${gameId}`);
   }
 
   /**

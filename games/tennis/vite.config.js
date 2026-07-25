@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import federation from '@originjs/vite-plugin-federation';
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 export default defineConfig({
-  plugins: [
+  plugins: isDev ? [
     federation({
       name: 'tennis',
       filename: 'remoteEntry.js',
@@ -16,7 +18,7 @@ export default defineConfig({
         }
       }
     })
-  ],
+  ] : [],
   server: {
     port: 5002,
     strictPort: true,
@@ -25,16 +27,23 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: 'oxc',
-    cssCodeSplit: true,
+    cssCodeSplit: false,
+    lib: isDev ? undefined : {
+      entry: './src/index.js',
+      name: 'TennisGame',
+      formats: ['es'],
+      fileName: 'game'
+    },
     rollupOptions: {
+      external: isDev ? [] : ['three'],
       output: {
         experimentalMinChunkSize: 10000,
-        manualChunks(id) {
+        manualChunks: isDev ? (id) => {
           if (id.includes('src/scene')) return 'scene';
           if (id.includes('src/physics')) return 'physics';
           if (id.includes('src/game-logic')) return 'game';
           if (id.includes('src/bot')) return 'bot';
-        }
+        } : undefined
       }
     }
   },

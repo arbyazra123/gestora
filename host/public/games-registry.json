@@ -11,7 +11,7 @@
       "id": "hand-sword",
       "name": "Hand Sword Rhythm",
       "remoteEntry": "http://localhost:5001/assets/remoteEntry.js",
-      "production": "/games/hand-sword/assets/remoteEntry.js",
+      "production": "/games/hand-sword/game.js",
       "handTracking": { "mode": "dual", "maxHands": 2 },
       "multiplayer": { "supported": true, "maxPlayers": 2, "modes": ["competitive", "cooperative"] }
     }
@@ -28,7 +28,7 @@
       "id": "tennis",
       "name": "Motion Tennis",
       "remoteEntry": "http://localhost:5002/assets/remoteEntry.js",
-      "production": "/games/tennis/assets/remoteEntry.js",
+      "production": "/games/tennis/game.js",
       "handTracking": { "mode": "single", "maxHands": 1 },
       "multiplayer": { "supported": true, "maxPlayers": 2, "modes": ["competitive"] }
     }
@@ -45,7 +45,7 @@
       "id": "pong",
       "name": "Motion Pong",
       "remoteEntry": "http://localhost:5003/assets/remoteEntry.js",
-      "production": "/games/pong/assets/remoteEntry.js",
+      "production": "/games/pong/game.js",
       "tracking": { "type": "tasksVision" }
     }
   }
