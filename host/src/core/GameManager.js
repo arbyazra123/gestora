@@ -157,11 +157,49 @@ class GameManager {
       return await import(`@games/${gameId}/src/index.js`);
     }
 
-    // Production mode - import from remote entry via Module Federation.
-    // Prefer the deployed URL; remoteEntry is the localhost dev fallback
-    // and would 404 in a real deployment.
+    // Production mode - load remoteEntry script first, then import the exposed module
     const remoteEntry = manifest.production || manifest.remoteEntry;
-    return await import(/* @vite-ignore */ remoteEntry);
+    const remoteName = this.getRemoteName(gameId);
+
+    // Load the remoteEntry.js as a script if not already loaded
+    if (!window[remoteName]) {
+      await this.loadRemoteEntry(remoteEntry, remoteName);
+    }
+
+    // Import the exposed module
+    return await import(/* @vite-ignore */ `${remoteName}/Game`);
+  }
+
+  /**
+   * Get the remote container name for a game
+   */
+  getRemoteName(gameId) {
+    const nameMap = {
+      'hand-sword': 'handSword',
+      'tennis': 'tennis',
+      'pong': 'pong'
+    };
+    return nameMap[gameId] || gameId;
+  }
+
+  /**
+   * Load a Module Federation remoteEntry.js script
+   */
+  async loadRemoteEntry(url, remoteName) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.type = 'module';
+      script.onload = () => {
+        console.log(`[GameManager] Loaded remoteEntry for ${remoteName}`);
+        resolve();
+      };
+      script.onerror = (error) => {
+        console.error(`[GameManager] Failed to load remoteEntry for ${remoteName}:`, error);
+        reject(new Error(`Failed to load remote entry: ${url}`));
+      };
+      document.head.appendChild(script);
+    });
   }
 
   /**
