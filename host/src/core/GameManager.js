@@ -149,7 +149,7 @@ class GameManager {
   /**
    * Import game module dynamically
    * In development: imports from local games folder
-   * In production: imports from CDN via remoteEntry
+   * In production: imports the remoteEntry which exposes the game module
    */
   async importGameModule(gameId, manifest) {
     // Development mode - import from local folder using alias
@@ -157,17 +157,32 @@ class GameManager {
       return await import(`@games/${gameId}/src/index.js`);
     }
 
-    // Production mode - load remoteEntry script first, then import the exposed module
+    // Production mode - import the remoteEntry.js which has the exposed Game module
+    // The remoteEntry.js is a self-contained ES module that exports the Game class
     const remoteEntry = manifest.production || manifest.remoteEntry;
-    const remoteName = this.getRemoteName(gameId);
 
-    // Load the remoteEntry.js as a script if not already loaded
-    if (!window[remoteName]) {
-      await this.loadRemoteEntry(remoteEntry, remoteName);
+    try {
+      // Import the remoteEntry module directly
+      const module = await import(/* @vite-ignore */ remoteEntry);
+
+      // The module should have a default export (the Game class)
+      // or we need to get it from the federation container
+      if (module.default) {
+        return module;
+      }
+
+      // If using Module Federation, get the exposed module
+      const remoteName = this.getRemoteName(gameId);
+      if (module.get) {
+        const factory = await module.get('./Game');
+        return factory();
+      }
+
+      throw new Error('Game module not found in remoteEntry');
+    } catch (error) {
+      console.error(`[GameManager] Failed to import game module:`, error);
+      throw error;
     }
-
-    // Import the exposed module
-    return await import(/* @vite-ignore */ `${remoteName}/Game`);
   }
 
   /**
@@ -180,26 +195,6 @@ class GameManager {
       'pong': 'pong'
     };
     return nameMap[gameId] || gameId;
-  }
-
-  /**
-   * Load a Module Federation remoteEntry.js script
-   */
-  async loadRemoteEntry(url, remoteName) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = url;
-      script.type = 'module';
-      script.onload = () => {
-        console.log(`[GameManager] Loaded remoteEntry for ${remoteName}`);
-        resolve();
-      };
-      script.onerror = (error) => {
-        console.error(`[GameManager] Failed to load remoteEntry for ${remoteName}:`, error);
-        reject(new Error(`Failed to load remote entry: ${url}`));
-      };
-      document.head.appendChild(script);
-    });
   }
 
   /**
