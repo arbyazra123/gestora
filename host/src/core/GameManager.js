@@ -173,7 +173,7 @@ class GameManager {
   loadGameCSS(gameId, manifest) {
     // Get CSS URL (same directory as game.js)
     const gameUrl = manifest.production || manifest.remoteEntry;
-    const cssUrl = gameUrl.replace(/game\.js$/, 'style.css');
+    const cssUrl = gameUrl.replace(/game\.js$/, 'game.css');
 
     // Check if already loaded
     const linkId = `game-css-${gameId}`;
