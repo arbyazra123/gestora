@@ -182,6 +182,10 @@ export default class HandSwordGame {
           this.room = this.multiplayer.room;
           this.matchState = 'waiting';
           this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
+          // Everything else in init() has already run by this point — tell
+          // the server this seat is actually ready to play, not just
+          // connected (see MultiplayerService.sendReady()'s doc comment).
+          this.multiplayer.sendReady();
         }
       }
 
@@ -430,6 +434,9 @@ export default class HandSwordGame {
         ...(this.pendingRoomOptions || {})
       });
       this.room = this.multiplayer.room;
+      // By the time the player taps Play, init()/start() have long since
+      // finished — this seat is ready the moment the room exists.
+      this.multiplayer.sendReady();
 
       this.matchState = 'waiting';
       this.uiModule.showMultiplayerOverlay('Waiting for opponent...');

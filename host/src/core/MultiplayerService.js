@@ -208,6 +208,18 @@ class MultiplayerService {
   }
 
   /**
+   * Tell the server this client's game has actually finished loading and is
+   * ready to play — the pre-match countdown only starts once every seat has
+   * sent this (see server/src/rooms/roomReady.js), not merely once every
+   * seat's websocket exists. Each game calls this right after adopting/
+   * creating its room (see e.g. games/pong/src/index.js).
+   */
+  sendReady() {
+    if (!this.room) return;
+    this.room.send('ready');
+  }
+
+  /**
    * Broadcast hand tracking data to other players
    * Throttled for performance
    */

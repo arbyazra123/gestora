@@ -66,10 +66,13 @@ canvas {
 }
 
 .tt-status {
+  /* Anchored near the top, not dead-center, so it never sits directly in
+     the ball's flight path down the middle of the court after a serve
+     (reported as blocking sight of the ball right when it matters most). */
   position: absolute;
-  top: 50%;
+  top: 12%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.8);
   padding: 30px 60px;
   border-radius: 16px;
@@ -134,10 +137,12 @@ canvas {
 }
 
 .tt-serve-challenge {
+  /* Same reasoning as .tt-status above — kept off the ball's flight path
+     down the center of the court. */
   position: absolute;
-  top: 50%;
+  top: 12%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.8);
   padding: 30px 50px;
   border-radius: 16px;

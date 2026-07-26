@@ -4,6 +4,7 @@ import * as tennisPhysics from '../physics/tennisPhysics.js';
 import * as rules from '../physics/tennisRules.js';
 import { roomsActive, clientsConnected, tickDuration, tickOverruns, clientRTT } from '../metrics.js';
 import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
+import { markReady } from './roomReady.js';
 
 const ROOM_LABEL = 'tennis';
 const TICK_BUDGET_S = 1 / 60; // matches Colyseus's default setSimulationInterval rate
@@ -19,7 +20,8 @@ const PlayerState = schema({
   sessionId: 'string',
   role: 'string',
   racket: Vec3,
-  connected: 'boolean'
+  connected: 'boolean',
+  ready: 'boolean' // see roomReady.js — set once this client's game has actually finished loading
 });
 
 const BallState = schema({
@@ -144,6 +146,13 @@ export class TennisRoom extends Room {
       if (typeof latencyMs === 'number') clientRTT.observe({ room: ROOM_LABEL }, latencyMs / 1000);
     });
 
+    // See roomReady.js's doc comment — the countdown no longer starts just
+    // because both sockets connected (onJoin below); it waits for both
+    // clients' games to actually finish loading and report in here.
+    this.onMessage('ready', (client) => {
+      markReady(this, client, COUNTDOWN_MS);
+    });
+
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
     roomsActive.inc({ room: ROOM_LABEL });
   }
@@ -158,15 +167,17 @@ export class TennisRoom extends Room {
       sessionId: client.sessionId,
       role,
       racket: new Vec3({ x: 0, y: 1, z: role === 'player' ? -5 : 4.5 }),
-      connected: true
+      connected: true,
+      ready: false
     }));
     clientsConnected.inc({ room: ROOM_LABEL });
 
+    // maxClients itself already refuses a 3rd join attempt regardless of
+    // lock() — this call's real job is removing the room from the public
+    // listing (see server/src/index.js's /rooms query) the moment it's
+    // full, independent of whether either client has reported ready yet.
     if (this.state.players.size === this.maxClients) {
       this.lock();
-      this.state.status = 'countdown';
-      this.state.startAt = Date.now() + COUNTDOWN_MS;
-      this.clock.setTimeout(() => { this.state.status = 'playing'; }, COUNTDOWN_MS);
     }
   }
 
@@ -176,7 +187,13 @@ export class TennisRoom extends Room {
     clientsConnected.dec({ room: ROOM_LABEL });
 
     // v1: no reconnection window — a drop ends the match for both players.
-    if (this.state.status === 'playing' || this.state.status === 'countdown') {
+    // Includes 'waiting' now too: with the ready-gate (see roomReady.js),
+    // both seats can be filled but still sitting in 'waiting' for a while
+    // if one client is slow to load — a disconnect during that window
+    // should still end the match instead of leaving the other player
+    // stuck with no timeout.
+    const bothHadJoined = this.state.players.size === this.maxClients;
+    if (bothHadJoined && (this.state.status === 'playing' || this.state.status === 'countdown' || this.state.status === 'waiting')) {
       this.state.status = 'ended';
     }
   }

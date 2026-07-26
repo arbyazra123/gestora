@@ -26,8 +26,14 @@ let isHandDetected = false;
 
 // Swing gesture: 1/2/3 fingers pick a hit direction, a low-to-high hand
 // motion while holding that gesture triggers the swing and sets the lift.
-export const SWING_DIRECTION_X = { left: -0.28, center: 0, right: 0.28 };
-const DIRECTION_TWIST = { left: -1, center: 0.35, right: 1 };
+// Signs flipped (was { left: -0.28, right: 0.28 }) to match scene.js's
+// camera now sitting at z=-6 looking toward +Z instead of z=+6 looking
+// toward -Z — that 180° flip mirrors screen-space left/right, and without
+// this compensation a player's "left" gesture would visually swing the
+// ball to their right. Verified with direct camera-projection math, not
+// by eye. mediaPipeToWorld()'s x mapping below gets the same treatment.
+export const SWING_DIRECTION_X = { left: 0.28, center: 0, right: -0.28 };
+const DIRECTION_TWIST = { left: 1, center: 0.35, right: -1 };
 const SWING_ANIM_DURATION = 350; // ms
 
 // Showing a valid 1/2/3-finger gesture arms that direction immediately (with
@@ -377,8 +383,12 @@ export function updateSwingAnimation() {
  * World: x: -width/2 to width/2, y: 0 to height, z: near to far
  */
 function mediaPipeToWorld(landmark) {
-  // Map x from [0, 1] to [-6, 6] (court width area)
-  const x = (landmark.x - 0.33) * -20 + HAND_X_SHIFT;
+  // Map x from [0, 1] to [-6, 6] (court width area). Sign flipped (was
+  // * -20) to compensate for scene.js's camera flip (z=6 -> z=-6) — see
+  // SWING_DIRECTION_X's comment above for the full reasoning. Without this,
+  // the racket would track the hand's mirror image instead of the hand
+  // itself once the camera moved to the other side of the court.
+  const x = (landmark.x - 0.33) * 20 + HAND_X_SHIFT;
 
   // Map y from [0, 1] to [3, 0] (inverted, higher in screen = higher in world),
   // plus the calibration shift above.

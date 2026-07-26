@@ -42,13 +42,32 @@ export function serveComplete() {
   gameState.gameStatus = 'playing';
 }
 
+/**
+ * Sweeps the ball's box from where it was last frame to where it is now,
+ * instead of only testing its current post-move position — a fast ball can
+ * otherwise cross a whole frame's worth of distance in one step and skip
+ * clean over a thin racket without either sampled position ever actually
+ * overlapping it ("ball goes through the racket", reported from real
+ * multiplayer testing). Axis-aligned, so it's a slight over-approximation
+ * for a diagonal path, not exact swept-volume math — deliberately cheap
+ * over precise, and correct for the common case of the ball moving mostly
+ * along one axis within a single frame.
+ */
+function getSweptBallBox(ball, ballState) {
+  const box = new THREE.Box3().setFromObject(ball);
+  if (ballState.previousPosition) {
+    box.expandByPoint(ballState.previousPosition);
+  }
+  return box;
+}
+
 export function checkPlayerRacketCollision(playerRacket, ball, ballState) {
   if (!ballState.isActive || ballState.lastHitBy === 'player') {
     return false;
   }
 
   const racketBox = new THREE.Box3().setFromObject(playerRacket);
-  const ballBox = new THREE.Box3().setFromObject(ball);
+  const ballBox = getSweptBallBox(ball, ballState);
 
   if (racketBox.intersectsBox(ballBox)) {
     console.log('[Table Tennis] Player hit the ball!');
@@ -65,7 +84,7 @@ export function checkBotRacketCollision(botRacket, ball, ballState) {
   }
 
   const racketBox = new THREE.Box3().setFromObject(botRacket);
-  const ballBox = new THREE.Box3().setFromObject(ball);
+  const ballBox = getSweptBallBox(ball, ballState);
 
   if (racketBox.intersectsBox(ballBox)) {
     console.log('[Table Tennis] Bot hit the ball!');

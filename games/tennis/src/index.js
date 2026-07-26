@@ -219,6 +219,10 @@ export default class TableTennisGame {
         // already run once by this point.
         if (this.multiplayer.room) {
           this.room = this.multiplayer.room;
+          // Everything else in init() has already run by this point — tell
+          // the server this seat is actually ready to play, not just
+          // connected (see MultiplayerService.sendReady()'s doc comment).
+          this.multiplayer.sendReady();
         }
       }
 
@@ -475,6 +479,9 @@ export default class TableTennisGame {
     try {
       await this.multiplayer.createRoom('tennis', this.pendingRoomOptions || {});
       this.room = this.multiplayer.room;
+      // By the time the player taps Play, init()/start() have long since
+      // finished — this seat is ready the moment the room exists.
+      this.multiplayer.sendReady();
 
       this.matchState = 'waiting';
       showStatus('Waiting for opponent...', 0);
@@ -521,6 +528,12 @@ export default class TableTennisGame {
     // their solo-mode counterparts) operate on these same `ball`/`ballState`
     // module singletons unchanged, so this is the only place that needs to
     // know a network sync is happening at all.
+    // Captured before overwriting ball.position below — see
+    // ballState.previousPosition's doc comment in physics.js. Multiplayer
+    // never calls updateBall() locally (the server owns ball motion), so
+    // this is the only place that ever advances it in that mode.
+    ballState.previousPosition.copy(ball.position);
+
     const localBallPos = this.toLocal({ x: state.ball.position.x, y: state.ball.position.y, z: state.ball.position.z });
     ball.position.set(localBallPos.x, localBallPos.y, localBallPos.z);
     const localBallVel = this.toLocal({ x: state.ball.velocity.x, y: state.ball.velocity.y, z: state.ball.velocity.z });

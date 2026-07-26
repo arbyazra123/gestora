@@ -29,7 +29,17 @@ export function initScene(container) {
     0.1,
     1000
   );
-  camera.position.set(0, 3, 6);
+  // z=-6 (not +6) so the player's own racket — which hand-tracking always
+  // places in the z<0 half of the court (see hand-tracking.js's
+  // mediaPipeToWorld()) — renders near/prominent instead of the bot's
+  // fixed z=+4.5 racket looming close while the player's own appeared
+  // distant (reported as a confusing perspective; pong's own camera
+  // likewise sits close to its player paddle's side). Flipping the camera
+  // like this mirrors screen-left/right, which hand-tracking.js's X mapping
+  // and SWING_DIRECTION_X compensate for — verified via direct camera
+  // projection math, not by eye, since this specific class of bug (feels
+  // mirrored/backwards) can't be caught by reading the code alone.
+  camera.position.set(0, 3, -6);
   camera.lookAt(0, 0.5, 0);
 
   // Create renderer
@@ -209,14 +219,16 @@ function createPaddle(faceColor) {
 }
 
 function createPlayerRacket() {
-  playerRacket = createPaddle(0xff6b35); // Orange
+  // Blue — player now sits on the near/-Z side after the camera flip below
+  // (matches pong's convention: the player's own racket/paddle is blue).
+  playerRacket = createPaddle(0x4169e1); // Royal blue
   playerRacket.position.set(2, 1, -5);
   playerRacket.rotation.x = -Math.PI / 2;
   scene.add(playerRacket);
 }
 
 function createBotRacket() {
-  botRacket = createPaddle(0x4169e1); // Royal blue
+  botRacket = createPaddle(0xff6b35); // Orange
   botRacket.position.set(0, 1, 4.5);
   // -PI/2 (radians, not degrees — 180 here was being read as ~233° after
   // wrapping) is the angle where this local geometry's face normal ends up

@@ -20,7 +20,18 @@ const MAX_BOUNCE_ANGLE = Math.PI / 3; // 60 degrees, classic pong paddle-angle f
 export const ballState = {
   velocity: new THREE.Vector3(0, 0, 0),
   isActive: false,
-  lastHitBy: null // 'player' or 'bot'
+  lastHitBy: null, // 'player' or 'bot'
+  // Where the ball was before this frame's movement — updateBall() below
+  // refreshes this every frame it actually moves the ball (and
+  // index.js's handleMatchStateChange() does the same in multiplayer,
+  // where updateBall() is never called locally). Paddle collision checks
+  // (game-logic.js) sweep the ball's box from here to its current position
+  // instead of only testing the single post-move point, so a fast ball
+  // can't skip clean over a paddle within one frame ("ball goes through
+  // the paddle" — reported from real multiplayer testing, worse at
+  // MAX_SPEED / low framerate where a single frame's movement can exceed
+  // the paddle's own depth).
+  previousPosition: new THREE.Vector3(0, PADDLE_Y, 0)
 };
 
 export function createBall(sceneRef) {
@@ -46,6 +57,7 @@ export function resetBall() {
   ballState.velocity.set(0, 0, 0);
   ballState.isActive = false;
   ballState.lastHitBy = null;
+  ballState.previousPosition.copy(ball.position);
 }
 
 /**
@@ -66,6 +78,9 @@ export function serveBall(server = 'player') {
 
 export function updateBall(deltaTime, fieldBounds) {
   if (!ballState.isActive) return;
+
+  // Captured before this frame moves the ball — see ballState.previousPosition's doc comment.
+  ballState.previousPosition.copy(ball.position);
 
   ball.position.add(ballState.velocity.clone().multiplyScalar(deltaTime));
 

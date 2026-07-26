@@ -2,6 +2,7 @@ import { Room } from 'colyseus';
 import { schema, MapSchema } from '@colyseus/schema';
 import { roomsActive, clientsConnected, clientRTT } from '../metrics.js';
 import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
+import { markReady } from './roomReady.js';
 
 const ROOM_LABEL = 'hand-sword';
 
@@ -13,7 +14,8 @@ const PlayerState = schema({
   hits: 'number',
   misses: 'number',
   side: 'string', // 'left' | 'right' | '' — only meaningful when MatchState.mode === 'coop'
-  connected: 'boolean'
+  connected: 'boolean',
+  ready: 'boolean' // see roomReady.js — set once this client's game has actually finished loading
 });
 
 const MatchState = schema({
@@ -74,6 +76,18 @@ export class HandSwordRoom extends Room {
       if (typeof latencyMs === 'number') clientRTT.observe({ room: ROOM_LABEL }, latencyMs / 1000);
     });
 
+    // See roomReady.js's doc comment — the countdown no longer starts just
+    // because both sockets connected (onJoin below); it waits for both
+    // clients' games to actually finish loading and report in here. This is
+    // exactly what was causing co-op's "boxes only spawn on one client" /
+    // "can't see partner's sword": if the countdown elapsed before the
+    // slower client had even subscribed to room state, that client's
+    // handleMatchStateChange() never saw the 'countdown' status edge, so
+    // setCoopSeed/setCoopSide/beginPlayback never ran for it at all.
+    this.onMessage('ready', (client) => {
+      markReady(this, client, COUNTDOWN_MS);
+    });
+
     roomsActive.inc({ room: ROOM_LABEL });
   }
 
@@ -96,15 +110,17 @@ export class HandSwordRoom extends Room {
       hits: 0,
       misses: 0,
       side,
-      connected: true
+      connected: true,
+      ready: false
     }));
     clientsConnected.inc({ room: ROOM_LABEL });
 
+    // maxClients itself already refuses a 3rd join attempt regardless of
+    // lock() — this call's real job is removing the room from the public
+    // listing (see server/src/index.js's /rooms query) the moment it's
+    // full, independent of whether either client has reported ready yet.
     if (this.state.players.size === this.maxClients) {
       this.lock();
-      this.state.status = 'countdown';
-      this.state.startAt = Date.now() + COUNTDOWN_MS;
-      this.clock.setTimeout(() => { this.state.status = 'playing'; }, COUNTDOWN_MS);
     }
   }
 
@@ -115,7 +131,13 @@ export class HandSwordRoom extends Room {
 
     // v1: no reconnection window — a drop ends the match for both players.
     // Room.allowReconnection() is a future upgrade, not built here.
-    if (this.state.status === 'playing' || this.state.status === 'countdown') {
+    // Includes 'waiting' now too: with the ready-gate (see roomReady.js),
+    // both seats can be filled but still sitting in 'waiting' for a while
+    // if one client is slow to load — a disconnect during that window
+    // should still end the match instead of leaving the other player
+    // stuck with no timeout.
+    const bothHadJoined = this.state.players.size === this.maxClients;
+    if (bothHadJoined && (this.state.status === 'playing' || this.state.status === 'countdown' || this.state.status === 'waiting')) {
       this.state.status = 'ended';
     }
   }

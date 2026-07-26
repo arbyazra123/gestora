@@ -25,12 +25,30 @@ const MIN_NET_CLEAR_DISTANCE = 0.5; // skip the clearance solve for hits already
 const SMASH_LAND_DEPTH = 2.2; // world units past the net a smash should land at (court half-length is ~3.57, see scene.js COURT_LENGTH/COURT_SCALE)
 const SMASH_BASE_POWER = 14; // vs. a normal hit's 9 — a smash is meaningfully harder to return
 
+// Global ball speed multiplier — scales every serve/hit/smash power by the
+// same factor (applied once, at the top of serveBall()/hitBall(), so every
+// downstream trajectory/net-clearance calculation scales consistently with
+// it) instead of retuning each constant separately. 1 = original speed;
+// lowered from that after real playtesting reported the ball moving too
+// fast to comfortably react to. games/tennis/src/index.js's MIN/MAX_SERVE_POWER
+// still define the *pre-scale* serve-challenge power range unchanged.
+export const BALL_SPEED_SCALE = 0.65;
+
 // Ball state
 export const ballState = {
   velocity: new THREE.Vector3(0, 0, 0),
   spin: new THREE.Vector3(0, 0, 0),
   isActive: false,
-  lastHitBy: null // 'player' or 'bot'
+  lastHitBy: null, // 'player' or 'bot'
+  // Where the ball was before this frame's movement — updateBall() below
+  // refreshes this every frame it actually moves the ball. Racket collision
+  // checks (game-logic.js) sweep the ball's box from here to its current
+  // position instead of only testing the single post-move point, so a fast
+  // ball can't skip clean over a thin racket within one frame ("ball goes
+  // through the racket" — reported from real multiplayer testing, worse at
+  // high speed / low framerate where a single frame's movement can exceed
+  // the racket's own depth).
+  previousPosition: new THREE.Vector3(0, 0.9, -5)
 };
 
 // Classification from the ball's most recent ground bounce ('out',
@@ -109,16 +127,22 @@ export function resetBallPosition() {
   ballState.spin.set(0, 0, 0);
   ballState.isActive = false;
   ballState.lastHitBy = null;
+  ballState.previousPosition.copy(ball.position);
 }
 
 export function serveBall(power = 4) {
+  // See BALL_SPEED_SCALE's doc comment — applied here, first, so every
+  // calculation below (including the net-clearance solve) is consistent
+  // with the actual scaled speed instead of the pre-scale input.
+  const scaledPower = power * BALL_SPEED_SCALE;
+
   // Back-solve the vertical launch velocity needed so the serve's parabola
   // clears the net (plus a margin) by the time it reaches z=0 — a fixed
   // vy=1 regardless of power meant the ball could hit the ground on the
   // server's own side before ever reaching the net, especially at lower
   // power. Same solve as hitBall()'s net-clearance guarantee for rally hits.
   const distanceToNet = Math.abs(ball.position.z);
-  const timeToNet = distanceToNet / power;
+  const timeToNet = distanceToNet / scaledPower;
   const requiredHeight = NET_TOP_HEIGHT + BALL_RADIUS + NET_CLEARANCE;
   const requiredVy =
     (requiredHeight - ball.position.y - 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
@@ -126,7 +150,7 @@ export function serveBall(power = 4) {
   ballState.velocity.set(
     (Math.random() - 0.5) * 2, // Slight random horizontal
     Math.max(1, requiredVy), // Upward trajectory, at least enough to clear the net
-    power // Forward speed
+    scaledPower // Forward speed
   );
   ballState.spin.set(0, 0, -2); // Topspin
   ballState.isActive = true;
@@ -136,6 +160,9 @@ export function serveBall(power = 4) {
 
 export function updateBall(deltaTime, courtBounds) {
   if (!ballState.isActive) return;
+
+  // Captured before this frame moves the ball — see ballState.previousPosition's doc comment.
+  ballState.previousPosition.copy(ball.position);
 
   // Apply gravity
   ballState.velocity.y += GRAVITY * deltaTime;
@@ -261,7 +288,10 @@ export function hitBall(racketPosition, racketVelocity, hitBy = 'player', gestur
       : racketVelocity.length() > 0.01
         ? racketVelocity.clone().normalize()
         : new THREE.Vector3(0, 0.3, forwardZ).normalize();
-  const hitPower = smash ? SMASH_BASE_POWER : 9;
+  // See BALL_SPEED_SCALE's doc comment — applied here, first, so every
+  // calculation below (net-clearance solve, smash landing-depth solve) is
+  // consistent with the actual scaled speed.
+  const hitPower = (smash ? SMASH_BASE_POWER : 9) * BALL_SPEED_SCALE;
 
   // Set new velocity based on hit
   ballState.velocity.copy(hitDirection.multiplyScalar(hitPower));
