@@ -208,15 +208,28 @@ class MultiplayerService {
   }
 
   /**
-   * Tell the server this client's game has actually finished loading and is
-   * ready to play — the pre-match countdown only starts once every seat has
-   * sent this (see server/src/rooms/roomReady.js), not merely once every
-   * seat's websocket exists. Each game calls this right after adopting/
-   * creating its room (see e.g. games/pong/src/index.js).
+   * Tell the server this player has actually clicked Ready — the pre-match
+   * countdown only starts once every seat has sent this (see
+   * server/src/rooms/roomReady.js), and only after a short debounce so a
+   * fast ready/unready toggle doesn't instantly (and irreversibly) lock the
+   * match in. Each game calls this from its own Ready button, once the room
+   * exists (see e.g. games/pong/src/index.js) — not automatically on load,
+   * so it reflects a real decision rather than "my assets finished loading."
    */
   sendReady() {
     if (!this.room) return;
     this.room.send('ready');
+  }
+
+  /**
+   * Undo sendReady() — lets a player back out before the match locks in.
+   * Safe to call even if the match has already started server-side; the
+   * server's debounce re-validates ready state right before committing to
+   * the countdown, so a stale unready arriving late just has no effect.
+   */
+  sendUnready() {
+    if (!this.room) return;
+    this.room.send('unready');
   }
 
   /**
@@ -265,6 +278,17 @@ class MultiplayerService {
   }
 
   /**
+   * Hand-sword coop only: tell the opponent that box `coopIndex` (their own
+   * shared spawn-sequence position — see games/hand-sword/src/game-logic.js's
+   * createBox) was just destroyed on this client, so they destroy the same
+   * box on their screen instead of watching it fly through untouched.
+   */
+  sendBoxHit(coopIndex) {
+    if (!this.room) return;
+    this.room.send('box_hit', { coopIndex });
+  }
+
+  /**
    * Send a game-state update (score/combo/etc). Written into the room's
    * synced schema state, so other clients pick it up via onStateChange
    * without any extra relay message.
@@ -289,6 +313,7 @@ class MultiplayerService {
     const room = this.room;
 
     const onOpponentHand = (msg) => this.emit('opponentHand', msg);
+    const onOpponentBoxHit = (msg) => this.emit('opponentBoxHit', msg);
     const onStateChange = (state) => {
       this._lastState = state;
       this.emit('stateChange', state);
@@ -300,12 +325,14 @@ class MultiplayerService {
     const onError = (code, message) => this.emit('error', { code, message });
 
     const unsubOpponentHand = room.onMessage('opponent_hand', onOpponentHand);
+    const unsubOpponentBoxHit = room.onMessage('opponent_box_hit', onOpponentBoxHit);
     room.onStateChange(onStateChange);
     room.onLeave(onLeave);
     room.onError(onError);
 
     this._roomUnsubscribers.push(
       unsubOpponentHand,
+      unsubOpponentBoxHit,
       () => room.onStateChange.remove(onStateChange),
       () => room.onLeave.remove(onLeave),
       () => room.onError.remove(onError)

@@ -27,6 +27,14 @@ export let coopSide = null; // 'left' | 'right' | null
 // the server owning box state (HandSwordRoom stays a Relay Room).
 let coopRng = null;
 
+// Tags each coop box with its position in the shared spawn sequence so a
+// "this box was hit" network message (see index.js's sendBoxHit/
+// handleOpponentBoxHit) can identify the same box on the other client —
+// both clients create boxes in lockstep from the same synced seed/timing,
+// so the Nth box created is the Nth box on both sides. Reset alongside the
+// seed at the start of every coop match.
+let coopBoxCounter = 0;
+
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -55,6 +63,7 @@ export function setCoopSide(value) {
 
 export function setCoopSeed(seed) {
   coopRng = mulberry32(seed);
+  coopBoxCounter = 0;
 }
 
 // UI elements - lazy initialized
@@ -133,6 +142,7 @@ export function createBox(scene, currentBPM, melodyFreq = null) {
     // gameplay reason to sync those.
     const rand = coopRng || Math.random;
     box.side = rand() > 0.5 ? 'right' : 'left';
+    box.coopIndex = coopBoxCounter++;
     const side = box.side === 'right' ? 1 : -1;
     const minOffset = Math.min(halfWidth * 0.4, 2);
     const maxOffset = Math.min(halfWidth * 0.8, 4);
@@ -328,6 +338,31 @@ export function destroyBox(scene, box, index) {
 
   // Score increases with combo multiplier
   updateScore(10 + combo);
+}
+
+/**
+ * Coop only: destroy a box on the partner's side in response to their
+ * "box_hit" network message (see index.js's handleOpponentBoxHit), so it
+ * visibly explodes here in sync with their hit instead of silently flying
+ * through to MISS_Z on our screen. Deliberately skips increaseCombo/
+ * recordHit/hits++/updateScore — those are the hitter's own local stats,
+ * already relayed to us separately via game_state/updateOpponentScore, so
+ * applying them again here would double-count. Explosion + hit sound are
+ * kept so the moment still feels reactive.
+ */
+export function destroyRemoteBox(scene, box, index) {
+  createExplosion(scene, box.position.clone(), box.material.color);
+  playHitSound(box.melodyFreq);
+  scene.remove(box);
+  boxes.splice(index, 1);
+}
+
+/**
+ * Coop only: look up a box by its shared coopIndex (see createBox) so an
+ * incoming "box_hit" message can be resolved to a local box instance.
+ */
+export function findBoxByCoopIndex(coopIndex) {
+  return boxes.findIndex((b) => b.coopIndex === coopIndex);
 }
 
 // ---------- BOX UPDATE ----------

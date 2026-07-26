@@ -113,6 +113,7 @@ function createUIOverlay() {
       <!-- Multiplayer Status Overlay (Center) -->
       <div id="multiplayer-overlay" class="multiplayer-overlay hidden">
         <div id="multiplayer-status-text" class="multiplayer-overlay__text"></div>
+        <button id="multiplayer-ready-btn" class="multiplayer-overlay__ready-btn hidden">Ready</button>
       </div>
 
       <!-- Results Overlay (Center) -->
@@ -332,8 +333,34 @@ export function hideMultiplayerOverlay() {
   clearCountdownInterval();
 }
 
+/**
+ * Show the explicit Ready toggle — a real user decision, replacing the old
+ * "sendReady() the instant loading finishes" behavior. onToggle(isReady) is
+ * called with the new state on every click; the caller (index.js) is
+ * responsible for actually sending 'ready'/'unready' to the server.
+ */
+export function showReadyButton(onToggle) {
+  const btn = document.getElementById('multiplayer-ready-btn');
+  if (!btn) return;
+  btn.classList.remove('hidden');
+  btn.classList.remove('is-ready');
+  btn.textContent = 'Ready';
+  btn.onclick = () => {
+    const isReady = !btn.classList.contains('is-ready');
+    btn.classList.toggle('is-ready', isReady);
+    btn.textContent = isReady ? 'Not Ready' : 'Ready';
+    onToggle(isReady);
+  };
+}
+
+export function hideReadyButton() {
+  const btn = document.getElementById('multiplayer-ready-btn');
+  if (btn) btn.classList.add('hidden');
+}
+
 export function showCountdown(startAtEpochMs) {
   clearCountdownInterval();
+  hideReadyButton();
   const tick = () => {
     const remainingMs = startAtEpochMs - Date.now();
     if (remainingMs <= 0) {

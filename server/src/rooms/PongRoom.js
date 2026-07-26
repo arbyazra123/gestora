@@ -4,7 +4,7 @@ import * as pongPhysics from '../physics/pongPhysics.js';
 import * as rules from '../physics/pongRules.js';
 import { roomsActive, clientsConnected, tickDuration, tickOverruns, clientRTT } from '../metrics.js';
 import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
-import { markReady } from './roomReady.js';
+import { markReady, markUnready, cancelPendingCountdown } from './roomReady.js';
 
 const ROOM_LABEL = 'pong';
 const TICK_BUDGET_S = 1 / 60; // matches Colyseus's default setSimulationInterval rate
@@ -193,6 +193,13 @@ export class PongRoom extends Room {
       markReady(this, client, COUNTDOWN_MS);
     });
 
+    // Lets a player un-click Ready before the match locks in — see
+    // roomReady.js's doc comment on why this needs a debounce rather than
+    // just gating the initial 'ready' message.
+    this.onMessage('unready', (client) => {
+      markUnready(this, client);
+    });
+
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
     roomsActive.inc({ room: ROOM_LABEL });
   }
@@ -236,6 +243,7 @@ export class PongRoom extends Room {
     // if one client is slow to load — a disconnect during that window
     // should still end the match instead of leaving the other player
     // stuck with no timeout.
+    cancelPendingCountdown(this);
     const bothHadJoined = this.state.players.size === this.maxClients;
     if (bothHadJoined && (this.state.status === 'playing' || this.state.status === 'countdown' || this.state.status === 'waiting')) {
       this.state.status = 'ended';

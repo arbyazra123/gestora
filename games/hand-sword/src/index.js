@@ -22,8 +22,11 @@ import {
   hits,
   misses,
   setMatchMode,
+  getMatchMode,
   setCoopSide,
-  setCoopSeed
+  setCoopSeed,
+  destroyRemoteBox,
+  findBoxByCoopIndex
 } from './game-logic.js';
 import { initHealthMeter, resetHealthMeter, getAccuracy } from './health-meter.js';
 import { initBackgroundEffects, animateBackgroundEffects, resetBackgroundEffects, pulseOnBeat } from './background-effects.js';
@@ -66,6 +69,7 @@ export default class HandSwordGame {
     this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
     this.selectedMultiplayerMode = 'versus'; // 'versus' | 'coop' — chosen pre-Ready, see ui.js's mode toggle
     this.room = null;
+    this.isReady = false; // this player's own Ready-button state, see showReadyPrompt()
     this._onStateChange = null;
     this._onOpponentHand = null;
     this._lastScoreSent = 0;
@@ -166,8 +170,10 @@ export default class HandSwordGame {
 
         this._onStateChange = (state) => this.handleMatchStateChange(state);
         this._onOpponentHand = (msg) => this.renderOpponentHand(msg.data);
+        this._onOpponentBoxHit = (msg) => this.handleOpponentBoxHit(msg);
         this.multiplayer.on('stateChange', this._onStateChange);
         this.multiplayer.on('opponentHand', this._onOpponentHand);
+        this.multiplayer.on('opponentBoxHit', this._onOpponentBoxHit);
 
         // Already joined via the hub's Room List before this game even
         // loaded — adopt it directly; handleReady() below becomes a no-op
@@ -181,11 +187,12 @@ export default class HandSwordGame {
         if (alreadyJoined) {
           this.room = this.multiplayer.room;
           this.matchState = 'waiting';
-          this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
-          // Everything else in init() has already run by this point — tell
-          // the server this seat is actually ready to play, not just
-          // connected (see MultiplayerService.sendReady()'s doc comment).
-          this.multiplayer.sendReady();
+          this.uiModule.showMultiplayerOverlay("You're in! Tap Ready when you're set.");
+          // Everything else in init() has already run by this point, so the
+          // room is playable now — but sendReady() only fires once the
+          // player actually clicks Ready (see showReadyPrompt()), not
+          // automatically just because loading finished.
+          this.showReadyPrompt();
         }
       }
 
@@ -296,9 +303,11 @@ export default class HandSwordGame {
     if (this.wantsMultiplayer) {
       if (this._onStateChange) this.multiplayer.off('stateChange', this._onStateChange);
       if (this._onOpponentHand) this.multiplayer.off('opponentHand', this._onOpponentHand);
+      if (this._onOpponentBoxHit) this.multiplayer.off('opponentBoxHit', this._onOpponentBoxHit);
       this.multiplayer.leaveRoom();
       this.room = null;
       this.matchState = 'idle';
+      this.isReady = false;
     }
 
     // Clear all boxes
@@ -374,6 +383,15 @@ export default class HandSwordGame {
     for (let i = boxes.length - 1; i >= 0; i--) {
       const box = boxes[i];
       if (checkCollision(box, rightBladeBoundingBox, leftBladeBoundingBox)) {
+        // Coop: this box only exists on our own assigned side (see
+        // checkCollision), so tell the opponent to destroy their copy of it
+        // too — otherwise it silently flies through untouched on their
+        // screen even though their ghost-sword rendering of us shows the
+        // swing that hit it. Read box.coopIndex before destroyBox() below
+        // splices it out of the boxes array.
+        if (this.wantsMultiplayer && getMatchMode() === 'coop') {
+          this.multiplayer.sendBoxHit(box.coopIndex);
+        }
         destroyBox(this.scene, box, i);
       }
     }
@@ -434,16 +452,34 @@ export default class HandSwordGame {
         ...(this.pendingRoomOptions || {})
       });
       this.room = this.multiplayer.room;
-      // By the time the player taps Play, init()/start() have long since
-      // finished — this seat is ready the moment the room exists.
-      this.multiplayer.sendReady();
-
       this.matchState = 'waiting';
-      this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
+      this.uiModule.showMultiplayerOverlay("Room created! Tap Ready when you're set.");
+      // The room existing doesn't mean this player is actually ready — that
+      // now requires an explicit click (see showReadyPrompt()), not just
+      // "the room happens to exist by the time Play was tapped."
+      this.showReadyPrompt();
     } catch (error) {
       console.error('[HandSword] Failed to create multiplayer match:', error);
       this.uiModule.showMultiplayerOverlay('Connection failed');
     }
+  }
+
+  /**
+   * Show the Ready toggle and wire it to actually send ready/unready — the
+   * only place that calls multiplayer.sendReady()/sendUnready() now. See
+   * roomReady.js's doc comment for why the server debounces the countdown
+   * instead of committing the instant the last seat reports ready.
+   */
+  showReadyPrompt() {
+    this.isReady = false;
+    this.uiModule.showReadyButton((isReady) => {
+      this.isReady = isReady;
+      if (isReady) {
+        this.multiplayer.sendReady();
+      } else {
+        this.multiplayer.sendUnready();
+      }
+    });
   }
 
   /**
@@ -453,6 +489,20 @@ export default class HandSwordGame {
   handleMatchStateChange(state) {
     const myId = this.multiplayer.getPlayerId();
     const opponent = [...state.players.values()].find((p) => p.sessionId !== myId);
+
+    // While still waiting (pre-countdown), reflect the opponent's Ready
+    // state in the status text so the player knows why the match hasn't
+    // started yet — either they haven't clicked Ready themselves, or
+    // they're stuck waiting on the other player to.
+    if (state.status === 'waiting' && this.matchState === 'waiting') {
+      if (!opponent) {
+        this.uiModule.showMultiplayerOverlay("You're in! Tap Ready when you're set.");
+      } else if (this.isReady && !opponent.ready) {
+        this.uiModule.showMultiplayerOverlay('Waiting for opponent to be ready...');
+      } else if (!this.isReady) {
+        this.uiModule.showMultiplayerOverlay("Tap Ready when you're set!");
+      }
+    }
 
     if (state.status === 'countdown' && this.matchState !== 'countdown' && this.matchState !== 'playing') {
       this.matchState = 'countdown';
@@ -504,6 +554,20 @@ export default class HandSwordGame {
     if (opponent) {
       this.uiModule.updateOpponentScore(opponent.score, opponent.combo, opponent.hits, opponent.misses);
     }
+  }
+
+  /**
+   * Coop only: the opponent just destroyed box `coopIndex` on their side —
+   * destroy our copy of the same box (found via the shared spawn-order
+   * index tagged in game-logic.js's createBox) so it visibly reacts here
+   * too, instead of silently flying through to MISS_Z. If it's already
+   * gone (e.g. it already passed MISS_Z on our side before their message
+   * arrived), there's nothing to do.
+   */
+  handleOpponentBoxHit(msg) {
+    const index = findBoxByCoopIndex(msg.coopIndex);
+    if (index === -1) return;
+    destroyRemoteBox(this.scene, boxes[index], index);
   }
 
   /**

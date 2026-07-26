@@ -2,7 +2,7 @@ import { Room } from 'colyseus';
 import { schema, MapSchema } from '@colyseus/schema';
 import { roomsActive, clientsConnected, clientRTT } from '../metrics.js';
 import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
-import { markReady } from './roomReady.js';
+import { markReady, markUnready, cancelPendingCountdown } from './roomReady.js';
 
 const ROOM_LABEL = 'hand-sword';
 
@@ -68,6 +68,14 @@ export class HandSwordRoom extends Room {
       this.broadcast('opponent_hand', { sessionId: client.sessionId, data }, { except: client });
     });
 
+    // Coop only: relay "I destroyed box N" so the other client destroys the
+    // same box on their own screen instead of watching it fly through
+    // untouched (see game-logic.js's destroyRemoteBox/findBoxByCoopIndex).
+    // Plain relay, no validation — same trust level as hand_data/game_state.
+    this.onMessage('box_hit', (client, data) => {
+      this.broadcast('opponent_box_hit', { sessionId: client.sessionId, coopIndex: data.coopIndex }, { except: client });
+    });
+
     // Fed by the client's own room.ping() (Colyseus's built-in RTT
     // measurement) — see MultiplayerService.js. Reported back over a
     // message since the server has no direct way to read the client's
@@ -86,6 +94,13 @@ export class HandSwordRoom extends Room {
     // setCoopSeed/setCoopSide/beginPlayback never ran for it at all.
     this.onMessage('ready', (client) => {
       markReady(this, client, COUNTDOWN_MS);
+    });
+
+    // Lets a player un-click Ready before the match locks in — see
+    // roomReady.js's doc comment on why this needs a debounce rather than
+    // just gating the initial 'ready' message.
+    this.onMessage('unready', (client) => {
+      markUnready(this, client);
     });
 
     roomsActive.inc({ room: ROOM_LABEL });
@@ -140,6 +155,7 @@ export class HandSwordRoom extends Room {
     if (bothHadJoined && (this.state.status === 'playing' || this.state.status === 'countdown' || this.state.status === 'waiting')) {
       this.state.status = 'ended';
     }
+    cancelPendingCountdown(this);
   }
 
   onDispose() {

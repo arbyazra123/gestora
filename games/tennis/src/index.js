@@ -84,7 +84,9 @@ import {
   hideServeChallenge,
   cleanupUI,
   setMultiplayerMode,
-  showMultiplayerCountdown
+  showMultiplayerCountdown,
+  showReadyButton,
+  hideReadyButton
 } from './ui.js';
 import {
   initAudio,
@@ -139,6 +141,7 @@ export default class TableTennisGame {
     this.wantsMultiplayer = !!services.launchOptions?.multiplayer;
     this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
     this.room = null;
+    this.isReady = false; // this player's own Ready-button state, see showReadyPrompt()
     this.myRole = null; // 'player' | 'bot' — assigned by the server on join
     this.latestState = null;
     this._onStateChange = null;
@@ -219,10 +222,13 @@ export default class TableTennisGame {
         // already run once by this point.
         if (this.multiplayer.room) {
           this.room = this.multiplayer.room;
-          // Everything else in init() has already run by this point — tell
-          // the server this seat is actually ready to play, not just
-          // connected (see MultiplayerService.sendReady()'s doc comment).
-          this.multiplayer.sendReady();
+          this.matchState = 'waiting';
+          showStatus("You're in! Tap Ready when you're set.", 0);
+          // Everything else in init() has already run by this point, so the
+          // room is playable now — but sendReady() only fires once the
+          // player actually clicks Ready (see showReadyPrompt()), not
+          // automatically just because loading finished.
+          this.showReadyPrompt();
         }
       }
 
@@ -479,16 +485,35 @@ export default class TableTennisGame {
     try {
       await this.multiplayer.createRoom('tennis', this.pendingRoomOptions || {});
       this.room = this.multiplayer.room;
-      // By the time the player taps Play, init()/start() have long since
-      // finished — this seat is ready the moment the room exists.
-      this.multiplayer.sendReady();
-
       this.matchState = 'waiting';
-      showStatus('Waiting for opponent...', 0);
+      showStatus("Room created! Tap Ready when you're set.", 0);
+      // The room existing doesn't mean this player is actually ready — that
+      // now requires an explicit click (see showReadyPrompt()), not just
+      // "the room happens to exist by the time Play was tapped."
+      this.showReadyPrompt();
     } catch (error) {
       console.error('[Table Tennis] Failed to create multiplayer match:', error);
       showStatus('Connection failed', 0);
     }
+  }
+
+  /**
+   * Show the Ready toggle and wire it to actually send ready/unready — the
+   * only place that calls multiplayer.sendReady()/sendUnready() now. See
+   * server/src/rooms/roomReady.js's doc comment for why the server
+   * debounces the countdown instead of committing the instant the last
+   * seat reports ready.
+   */
+  showReadyPrompt() {
+    this.isReady = false;
+    showReadyButton((isReady) => {
+      this.isReady = isReady;
+      if (isReady) {
+        this.multiplayer.sendReady();
+      } else {
+        this.multiplayer.sendUnready();
+      }
+    });
   }
 
   /**
@@ -562,6 +587,22 @@ export default class TableTennisGame {
     const myGames = this.myRole === 'player' ? state.game.playerGames : state.game.botGames;
     const oppGames = this.myRole === 'player' ? state.game.botGames : state.game.playerGames;
     updateGameScore(myGames, oppGames);
+
+    // While still waiting (pre-countdown), reflect the opponent's Ready
+    // state in the status text so the player knows why the match hasn't
+    // started yet — either they haven't clicked Ready themselves, or
+    // they're stuck waiting on the other player to.
+    if (state.status === 'waiting' && this.matchState === 'waiting') {
+      const myId = this.multiplayer.getPlayerId();
+      const opponent = [...state.players.values()].find((p) => p.sessionId !== myId);
+      if (!opponent) {
+        showStatus("You're in! Tap Ready when you're set.", 0);
+      } else if (this.isReady && !opponent.ready) {
+        showStatus('Waiting for opponent to be ready...', 0);
+      } else if (!this.isReady) {
+        showStatus("Tap Ready when you're set!", 0);
+      }
+    }
 
     // One-shot reactions to actual transitions, edge-detected against the
     // last seen value so they don't re-fire on every unrelated state tick.
@@ -747,6 +788,7 @@ export default class TableTennisGame {
       this.multiplayer.leaveRoom();
       this.room = null;
       this.matchState = 'idle';
+      this.isReady = false;
     }
 
     // Remove keyboard listener

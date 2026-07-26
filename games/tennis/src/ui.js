@@ -9,6 +9,7 @@ import '../style.css';
 let uiOverlay;
 let gameScoreDisplay;
 let statusDisplay;
+let readyButton;
 let fingerCountDisplay;
 let serveChallengeDisplay;
 let introOverlay;
@@ -39,6 +40,16 @@ export function setupUI(container, { onPlay } = {}) {
   statusDisplay = document.createElement('div');
   statusDisplay.className = 'tt-status';
   statusDisplay.id = 'status-display';
+
+  // Multiplayer-only Ready toggle. A sibling of statusDisplay rather than a
+  // child — showStatus() below replaces statusDisplay's textContent
+  // wholesale on every status update, which would otherwise wipe this
+  // button out the moment any status text changed. Positioned via CSS to
+  // sit just under it instead.
+  readyButton = document.createElement('button');
+  readyButton.className = 'tt-ready-btn hidden';
+  readyButton.id = 'tt-ready-btn';
+  readyButton.textContent = 'Ready';
 
   // Live debug readout of the raw finger count, near the camera preview
   // (CameraService places that canvas at top:10px, right:10px, 240x180)
@@ -107,6 +118,7 @@ export function setupUI(container, { onPlay } = {}) {
   // Append all elements
   uiOverlay.appendChild(gameScoreDisplay);
   uiOverlay.appendChild(statusDisplay);
+  uiOverlay.appendChild(readyButton);
   uiOverlay.appendChild(fingerCountDisplay);
   uiOverlay.appendChild(serveChallengeDisplay);
   uiOverlay.appendChild(introOverlay);
@@ -215,8 +227,33 @@ export function showGameOver(winner) {
  * server-provided epoch timestamp, reusing the existing status display —
  * mirrors games/hand-sword/src/ui.js's showCountdown().
  */
+/**
+ * Explicit Ready toggle — replaces the old "sendReady() the instant
+ * loading finished" behavior with a real user decision the player can
+ * change their mind about. onToggle(isReady) is called on every click; the
+ * caller (index.js) is responsible for actually sending ready/unready to
+ * the server.
+ */
+export function showReadyButton(onToggle) {
+  if (!readyButton) return;
+  readyButton.classList.remove('hidden');
+  readyButton.classList.remove('is-ready');
+  readyButton.textContent = 'Ready';
+  readyButton.onclick = () => {
+    const isReady = !readyButton.classList.contains('is-ready');
+    readyButton.classList.toggle('is-ready', isReady);
+    readyButton.textContent = isReady ? 'Not Ready' : 'Ready';
+    onToggle(isReady);
+  };
+}
+
+export function hideReadyButton() {
+  if (readyButton) readyButton.classList.add('hidden');
+}
+
 export function showMultiplayerCountdown(startAtEpochMs) {
   clearMultiplayerCountdown();
+  hideReadyButton();
   const tick = () => {
     const remainingMs = startAtEpochMs - Date.now();
     if (remainingMs <= 0) {
