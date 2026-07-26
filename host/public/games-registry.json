@@ -3,10 +3,23 @@
     "id": "hand-sword",
     "name": "Hand Sword Rhythm",
     "description": "Slice boxes to the beat with your hands",
+    "genre": "Rhythm / Action",
     "thumbnail": "/games/hand-sword/thumb.jpg",
     "tags": ["rhythm", "music", "action"],
     "players": "1-2",
     "status": "available",
+    "howToPlay": [
+      "Raise both hands in front of the camera — each hand controls its own glowing sword.",
+      "Boxes fly toward you in time with the music; slice through them with the correct hand as they reach you.",
+      "Missing a box, or slicing it with the wrong hand, breaks your combo.",
+      "In multiplayer Versus mode you compete for the higher score; in Co-op mode you and your partner share one synced beat and combine your scores as a team."
+    ],
+    "rules": [
+      "Each clean hit builds your combo multiplier; a miss resets it back to zero.",
+      "Song, BPM, and difficulty are locked in by whichever player creates the match.",
+      "Versus mode: whoever has the higher score when the track ends wins.",
+      "Co-op mode: your combined team score is what counts, not who scored more."
+    ],
     "manifest": {
       "id": "hand-sword",
       "name": "Hand Sword Rhythm",
@@ -20,10 +33,22 @@
     "id": "tennis",
     "name": "Motion Tennis",
     "description": "Play tennis against a bot using hand tracking to control your racket",
+    "genre": "Sports / Arcade",
     "thumbnail": "/games/tennis/thumb.jpg",
     "tags": ["sports", "tennis", "bot"],
-    "players": "1",
+    "players": "1-2",
     "status": "available",
+    "howToPlay": [
+      "Move your hand in front of the camera to control your racket, and swing to hit the ball as it comes toward you.",
+      "To serve, show the three finger-count digits in the exact order displayed, before the timer runs out.",
+      "While swinging, hold up 1, 2, or 3 fingers to aim your shot left, center, or right — or 5 fingers to smash for extra power.",
+      "Play solo against a bot offline, or head-to-head online against a real opponent via Quick Match or a private room."
+    ],
+    "rules": [
+      "First to win 2 games takes the match; each game is won by reaching 4 points with at least a 2-point lead (deuce/advantage kicks in past 3-3).",
+      "The ball must bounce once on the opponent's side before they return it — a second bounce, or a bounce on the wrong side, costs you the point.",
+      "Serve power scales with how many of the 3 finger-count digits you confirm in time — a full 3-for-3 gives you the strongest serve."
+    ],
     "manifest": {
       "id": "tennis",
       "name": "Motion Tennis",
@@ -37,16 +62,30 @@
     "id": "pong",
     "name": "Motion Pong",
     "description": "Classic pong — move your head left and right to control your paddle, and hold up finger-count gestures to trigger special abilities",
+    "genre": "Arcade",
     "thumbnail": "/games/pong/thumb.jpg",
     "tags": ["arcade", "pong", "bot"],
-    "players": "1",
+    "players": "1-2",
     "status": "available",
+    "howToPlay": [
+      "Move your head left and right — the camera tracks your nose position and mirrors it to your paddle.",
+      "Press SPACE, or just tap the screen, to serve when it's your turn.",
+      "Hold up finger-count patterns with your hand to trigger special abilities: 5→4→3 for Paddle Boost, 1→2 for Slow-Mo, 3→4→5 for Shield.",
+      "Play solo against a bot offline, or challenge a real opponent online via Quick Match or a private room."
+    ],
+    "rules": [
+      "First to 7 points wins the match — whoever wins a point serves next.",
+      "Each successful paddle hit slightly speeds up the ball, so rallies get faster over time.",
+      "Shield deflects one otherwise-lost point back into play instead of ending it, consumed on use.",
+      "Slow-Mo slows the ball down for both players at once, not just whoever activated it."
+    ],
     "manifest": {
       "id": "pong",
       "name": "Motion Pong",
       "remoteEntry": "http://localhost:5003/assets/remoteEntry.js",
       "production": "/games/pong/game.js",
-      "tracking": { "type": "tasksVision" }
+      "tracking": { "type": "tasksVision" },
+      "multiplayer": { "supported": true, "maxPlayers": 2, "modes": ["competitive"] }
     }
   }
 ]

@@ -64,6 +64,17 @@ function createUIOverlay() {
               <option value="dnb">Breakneck (Hard)</option>
             </select>
           </div>
+
+          <!-- Multiplayer-only: shown/hidden via setupUI()'s multiplayerOptions
+               check, same as before — just relocated here (settings panel)
+               instead of floating in the center pre-match overlay. -->
+          <div id="multiplayer-mode-toggle" class="theme-control multiplayer-mode-toggle hidden">
+            <label class="theme-control__label">Match Mode</label>
+            <div class="control-group">
+              <button id="mode-versus-btn" class="control-btn active">Versus</button>
+              <button id="mode-coop-btn" class="control-btn">Co-op</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -101,10 +112,6 @@ function createUIOverlay() {
 
       <!-- Multiplayer Status Overlay (Center) -->
       <div id="multiplayer-overlay" class="multiplayer-overlay hidden">
-        <div id="multiplayer-mode-toggle" class="multiplayer-mode-toggle hidden">
-          <button id="mode-versus-btn" class="mode-toggle-btn active">Versus</button>
-          <button id="mode-coop-btn" class="mode-toggle-btn">Co-op</button>
-        </div>
         <div id="multiplayer-status-text" class="multiplayer-overlay__text"></div>
       </div>
 
@@ -158,7 +165,10 @@ export function setupUI(scene, leftSwordGroup, onGameReset, multiplayerOptions =
 
   // Multiplayer mode toggle (Versus/Co-op) — shown only pre-Ready; the
   // choice is locked in once Ready is clicked (see playBtn handler below).
-  if (multiplayerOptions?.wantsMultiplayer) {
+  // Hidden entirely when joining an existing room from the hub's Room List
+  // (alreadyJoined) — that room's mode is already locked in by whoever
+  // created it, not chosen here.
+  if (multiplayerOptions?.wantsMultiplayer && !multiplayerOptions?.alreadyJoined) {
     const modeToggle = document.getElementById('multiplayer-mode-toggle');
     const modeVersusBtn = document.getElementById('mode-versus-btn');
     const modeCoopBtn = document.getElementById('mode-coop-btn');

@@ -6,14 +6,30 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-#app {
+/*
+ * .tt-app-root is this game's own root when it runs standalone
+ * (index.html/dev.html); .game-container is the div the host shell renders
+ * it into instead when federated (host/style.css already gives it
+ * position:fixed sizing — only overflow/background are added here, not
+ * redeclared). Deliberately NOT `#app`: both this game's standalone HTML and
+ * the host shell use that same id for their own (different) root div, so a
+ * bare `#app` selector here would reach right past the host's game-container
+ * and style the host's outer shell directly once this game's CSS loads —
+ * which is exactly what was leaking this game's background/overflow into
+ * the hub after returning from a match.
+ */
+.tt-app-root {
   width: 100vw;
   height: 100vh;
   position: relative;
+}
+
+.tt-app-root,
+.game-container {
+  overflow: hidden;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 canvas {
@@ -35,37 +51,6 @@ canvas {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: white;
   z-index: 1000;
-}
-
-.tt-score-panel {
-  position: absolute;
-  top: 150px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.7);
-  padding: 15px 20px;
-  border-radius: 12px;
-  display: flex;
-  gap: 30px;
-  align-items: center;
-  font-size: 24px;
-  font-weight: bold;
-  backdrop-filter: blur(10px);
-}
-
-.tt-score-panel__side {
-  text-align: center;
-}
-
-.tt-score-panel__label {
-  font-size: 14px;
-  opacity: 0.7;
-  margin-bottom: 5px;
-}
-
-.tt-score-panel__divider {
-  font-size: 32px;
-  opacity: 0.5;
 }
 
 .tt-games-panel {
@@ -91,6 +76,7 @@ canvas {
   font-size: 36px;
   font-weight: bold;
   text-align: center;
+  white-space: pre-line;
   display: none;
   backdrop-filter: blur(10px);
 }
@@ -209,34 +195,118 @@ canvas {
   opacity: 0.7;
 }
 
-.tt-controls-panel {
+/* ---------- How-to-play intro (replaces the old permanent banner) ---------- */
+.tt-intro-overlay {
   position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.6);
-  padding: 15px 20px;
-  border-radius: 12px;
-  font-size: 14px;
-  text-align: center;
-  backdrop-filter: blur(10px);
-  max-width: 600px;
-}
-
-.tt-controls-panel__title {
-  margin-bottom: 10px;
-}
-
-.tt-controls-panel__hint {
-  opacity: 0.9;
-  line-height: 1.6;
-}
-
-.tt-controls-panel__small {
-  font-size: 12px;
-  opacity: 0.7;
-}
-
-.tt-controls-panel.hidden {
+  inset: 0;
   display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  padding: 20px;
+}
+
+.tt-intro-overlay.visible {
+  display: flex;
+  pointer-events: auto;
+}
+
+.tt-intro-card {
+  background: rgba(20, 20, 30, 0.92);
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.tt-intro__title {
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+
+.tt-intro__hint {
+  opacity: 0.9;
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.tt-intro__small {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.tt-intro-play-btn {
+  margin-top: 22px;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #1a1a3a;
+  background: linear-gradient(90deg, #4ade80, #22d3ee);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 160px;
+}
+
+.tt-info-button {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+}
+
+@media (max-width: 640px) {
+  .tt-intro-card {
+    padding: 20px 18px;
+    max-width: 90vw;
+  }
+
+  .tt-intro__title {
+    font-size: 18px;
+  }
+
+  .tt-intro__hint {
+    font-size: 13px;
+  }
+
+  .tt-intro__small {
+    font-size: 11px;
+  }
+
+  .tt-status {
+    padding: 18px 28px;
+    font-size: 24px;
+  }
+
+  .tt-serve-challenge {
+    padding: 20px 24px;
+  }
+
+  .tt-serve-digit {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+
+  .tt-finger-panel {
+    top: 150px;
+    width: 160px;
+    font-size: 11px;
+  }
 }

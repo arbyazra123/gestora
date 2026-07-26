@@ -67,9 +67,9 @@ import {
   getCurrentServer,
   gameState
 } from './game-logic.js';
+import { createScoreDisplay, updateScoreDisplay, disposeScoreDisplay } from './score-display.js';
 import {
   setupUI,
-  updateScore,
   updateGameScore,
   updateFingerCount,
   updateSwingDirection,
@@ -146,6 +146,14 @@ export default class TableTennisGame {
     this._lastGameStatus = null;
     this._lastRacketSent = 0;
 
+    // Set only when the player chose "Create Room" in the hub's Room List
+    // (see host/src/ui/RoomListModal.js) — tennis has no pre-match settings
+    // of its own to gather first, so handleReady() creates the room
+    // directly with these once the player taps Play. Null when they instead
+    // joined an existing room from the list (services.multiplayer.room is
+    // already set in that case — see init()).
+    this.pendingRoomOptions = services.launchOptions?.pendingRoomOptions || null;
+
     console.log('[Table Tennis] Game instance created');
   }
 
@@ -165,6 +173,7 @@ export default class TableTennisGame {
 
       // Create the ball
       createBall(scene);
+      createScoreDisplay(scene);
 
       initAudio();
       this.setupAudioUnlock();
@@ -177,7 +186,7 @@ export default class TableTennisGame {
       setBotDifficulty('medium');
 
       // Setup UI
-      setupUI(this.container);
+      setupUI(this.container, { onPlay: () => this.triggerGameStart() });
 
       // Subscribe to MediaPipe hand tracking
       this.mediaPipe.subscribe('tennis', (results) => {
@@ -201,6 +210,16 @@ export default class TableTennisGame {
         setMultiplayerMode(true);
         this._onStateChange = (state) => this.handleMatchStateChange(state);
         this.multiplayer.on('stateChange', this._onStateChange);
+
+        // Already joined via the hub's Room List before this game even
+        // loaded (the player picked an existing room, not "Create Room") —
+        // adopt it directly; handleReady() below becomes a no-op for this
+        // case. MultiplayerService.on() above already replayed the room's
+        // current state synchronously, so handleMatchStateChange() has
+        // already run once by this point.
+        if (this.multiplayer.room) {
+          this.room = this.multiplayer.room;
+        }
       }
 
       console.log('[Table Tennis] Initialized successfully');
@@ -234,18 +253,28 @@ export default class TableTennisGame {
   setupKeyboardControls() {
     this.keyboardHandler = (event) => {
       if (event.code === 'Space' && !event.repeat && this.awaitingGameStart) {
-        this.awaitingGameStart = false;
-        if (this.wantsMultiplayer) {
-          this.handleReady();
-        } else {
-          this.runStartCountdown();
-        }
+        this.triggerGameStart();
       } else if (event.code === 'KeyR' && !this.wantsMultiplayer && isGameOver()) {
         this.restartGame();
       }
     };
 
     window.addEventListener('keydown', this.keyboardHandler);
+  }
+
+  /**
+   * Shared by the SPACE keydown handler and the intro overlay's tap-to-play
+   * button (see ui.js's onPlay callback) — one touch-friendly trigger for
+   * both input paths, since mobile has no keyboard to press SPACE on.
+   */
+  triggerGameStart() {
+    if (!this.awaitingGameStart) return;
+    this.awaitingGameStart = false;
+    if (this.wantsMultiplayer) {
+      this.handleReady();
+    } else {
+      this.runStartCountdown();
+    }
   }
 
   /**
@@ -429,24 +458,28 @@ export default class TableTennisGame {
   }
 
   /**
-   * Called when the player presses SPACE in multiplayer mode (this key is
-   * already a proven gesture-safe audio-unlock point via setupAudioUnlock()'s
-   * global keydown listener, registered earlier in init() — see that
-   * method's doc comment). Joins the match room; the server pairs the
-   * first two waiting clients and drives the countdown/start-epoch.
+   * Called when the player taps/presses SPACE on the intro overlay in
+   * multiplayer mode (this is already a proven gesture-safe audio-unlock
+   * point via setupAudioUnlock()'s global keydown/pointerdown listener,
+   * registered earlier in init()). If a room was already joined via the
+   * hub's Room List (see init()) this is a no-op — state sync is already
+   * flowing. Otherwise the player chose "Create Room" there, and this
+   * creates it now with whatever password/name they set.
    */
   async handleReady() {
+    if (this.room) return;
+
     this.matchState = 'connecting';
     showStatus('Connecting...', 0);
 
     try {
-      await this.multiplayer.connect();
-      this.room = await this.multiplayer.joinRoom('tennis');
+      await this.multiplayer.createRoom('tennis', this.pendingRoomOptions || {});
+      this.room = this.multiplayer.room;
 
       this.matchState = 'waiting';
       showStatus('Waiting for opponent...', 0);
     } catch (error) {
-      console.error('[Table Tennis] Failed to join multiplayer match:', error);
+      console.error('[Table Tennis] Failed to create multiplayer match:', error);
       showStatus('Connection failed', 0);
     }
   }
@@ -512,7 +545,7 @@ export default class TableTennisGame {
     const rawScore = getScoreDisplay({ playerScore: state.game.playerScore, botScore: state.game.botScore });
     const myLabel = this.myRole === 'player' ? rawScore.player : rawScore.bot;
     const oppLabel = this.myRole === 'player' ? rawScore.bot : rawScore.player;
-    updateScore(myLabel, oppLabel);
+    updateScoreDisplay(myLabel, oppLabel);
     const myGames = this.myRole === 'player' ? state.game.playerGames : state.game.botGames;
     const oppGames = this.myRole === 'player' ? state.game.botGames : state.game.playerGames;
     updateGameScore(myGames, oppGames);
@@ -549,6 +582,15 @@ export default class TableTennisGame {
     const justBecameReadyAgain = state.game.gameStatus === 'ready' && this._lastGameStatus !== 'ready';
     if (state.status === 'playing' && (justStartedPlaying || justBecameReadyAgain)) {
       this.beginMultiplayerServeTurn();
+    }
+
+    // The opponent's serve just completed (rally is live) — clear the
+    // "Waiting for opponent to serve..." status from beginMultiplayerServeTurn()
+    // above. Our own serve already clears it via completePlayerServe()'s
+    // hideStatus(), but that only covers this client's own turn — this edge
+    // is what previously left the message stuck once the opponent served.
+    if (state.game.gameStatus === 'playing' && this._lastGameStatus !== 'playing') {
+      hideStatus();
     }
 
     if (state.game.gameStatus === 'point-over' && this._lastGameStatus !== 'point-over') {
@@ -609,14 +651,17 @@ export default class TableTennisGame {
     this.isPaused = false;
     this.lastTime = performance.now();
 
+    // Set synchronously, before any await, so a tap on the intro overlay's
+    // Play button (see ui.js) can never race ahead of awaitingGameStart
+    // actually being true.
+    this.promptGameStart();
+
     // Browsers require a user gesture before audio can play; this is called
     // right after the hub's "Play" click, and it's harmless/idempotent to
     // retry from startPlayerServeChallenge() (a more direct keypress/pointer
     // gesture) if this doesn't take in stricter browsers.
     await startAudioContext();
     startMusic();
-
-    this.promptGameStart();
 
     // Start animation loop
     this.animate();
@@ -703,6 +748,7 @@ export default class TableTennisGame {
 
     // Cleanup UI
     cleanupUI();
+    disposeScoreDisplay();
 
     // Dispose Three.js resources
     if (renderer) {
@@ -940,7 +986,7 @@ export default class TableTennisGame {
    */
   updateUI() {
     const score = getScoreDisplay();
-    updateScore(score.player, score.bot);
+    updateScoreDisplay(score.player, score.bot);
 
     const gameScore = getGameScore();
     updateGameScore(gameScore.playerGames, gameScore.botGames);

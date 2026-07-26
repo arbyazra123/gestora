@@ -70,6 +70,9 @@ class CameraService {
       this.toggleButton.addEventListener('click', () => this.toggleCameraPreview());
       document.body.appendChild(this.toggleButton);
     }
+    // Un-hide in case a previous stop() (e.g. returning to the hub) hid it —
+    // there's no camera to toggle while no game is running.
+    this.toggleButton.classList.remove('hidden');
     this.updateToggleButtonLabel();
 
     try {
@@ -193,6 +196,11 @@ class CameraService {
     }
 
     this.hidePreview();
+    // No camera is running while back on the hub — hide the toggle button
+    // too, not just the preview canvas, so it doesn't imply otherwise.
+    if (this.toggleButton) {
+      this.toggleButton.classList.add('hidden');
+    }
     this.isActive = false;
     console.log('[Camera] Stopped');
   }

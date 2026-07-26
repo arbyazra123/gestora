@@ -1,6 +1,7 @@
 import { Room } from 'colyseus';
 import { schema, MapSchema } from '@colyseus/schema';
 import { roomsActive, clientsConnected, clientRTT } from '../metrics.js';
+import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
 
 const ROOM_LABEL = 'hand-sword';
 
@@ -36,6 +37,8 @@ export class HandSwordRoom extends Room {
   maxClients = 2;
 
   onCreate(options = {}) {
+    setupLobbyMetadata(this, options);
+
     // First player's currently-selected local settings become the match's
     // locked settings — no settings-negotiation UI is in scope here.
     const mode = options.mode === 'coop' ? 'coop' : 'versus';
@@ -72,6 +75,10 @@ export class HandSwordRoom extends Room {
     });
 
     roomsActive.inc({ room: ROOM_LABEL });
+  }
+
+  onAuth(client, options) {
+    return checkRoomPassword(this, options);
   }
 
   onJoin(client) {

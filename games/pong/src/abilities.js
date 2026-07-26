@@ -46,6 +46,38 @@ let onCooldownChangeCallback = null;
 
 let sequenceBuffer = [];
 
+// Both activation paths — the player's gesture patterns and the bot's
+// periodic auto-activation in updateAbilities() below — are suppressed
+// until the game's first serve actually happens (see index.js's
+// serve()/restartGame()). Without this, the bot's nextCheckAt timer (set
+// by resetAbilities() at game load) keeps counting down through the
+// pre-serve idle time, so it could fire an ability before any point is
+// even in play — same idea as table tennis's swing/smash gating.
+let abilitiesEnabled = false;
+
+// Independent of abilitiesEnabled above: in multiplayer, the 'bot' side is a
+// real second human whose abilities arrive over the network (see
+// games/pong/src/index.js's room.onMessage('ability_activated', ...)), not
+// this local randomized timer — so multiplayer disables just this auto-timer
+// while leaving the player's own gesture-pattern detection untouched.
+let botAutoActivateEnabled = true;
+
+export function setBotAutoActivateEnabled(enabled) {
+  botAutoActivateEnabled = enabled;
+}
+
+export function setAbilitiesEnabled(enabled) {
+  abilitiesEnabled = enabled;
+  if (!enabled) {
+    sequenceBuffer = [];
+  } else {
+    // Restart the bot's random timer fresh from the moment abilities
+    // actually go live, rather than one that may have already elapsed
+    // during the disabled/idle period (which would fire instantly).
+    state.bot.nextCheckAt = performance.now() + BOT_CHECK_MIN + Math.random() * (BOT_CHECK_MAX - BOT_CHECK_MIN);
+  }
+}
+
 export function setupAbilities({ onActivate, onCooldownChange } = {}) {
   onActivateCallback = onActivate || null;
   onCooldownChangeCallback = onCooldownChange || null;
@@ -70,6 +102,8 @@ function findAbilityForPattern(sequence) {
 }
 
 function handlePlayerGesture(count) {
+  if (!abilitiesEnabled) return;
+
   const candidate = [...sequenceBuffer, count];
 
   const type = findAbilityForPattern(candidate);
@@ -119,7 +153,7 @@ export function updateAbilities() {
   }
 
   const bot = state.bot;
-  if (bot.nextCheckAt !== null && now >= bot.nextCheckAt) {
+  if (abilitiesEnabled && botAutoActivateEnabled && bot.nextCheckAt !== null && now >= bot.nextCheckAt) {
     const ready = ABILITY_KEYS.filter((key) => !isOnCooldown('bot', key));
     if (ready.length > 0) {
       activate('bot', ready[Math.floor(Math.random() * ready.length)]);

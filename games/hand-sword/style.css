@@ -280,9 +280,13 @@
 }
 
 /* ---------- Opponent panel (top right, multiplayer) ---------- */
+/* top:240px clears the shared camera preview (CameraService places that
+   canvas at top:58px, right:10px, 240x180 at desktop size) — matches the
+   exact clearance games/tennis/pong's own near-camera panels use, so all
+   three games are consistent about how far down they duck under it. */
 .opponent-panel {
   position: absolute;
-  top: 20px;
+  top: 240px;
   right: 20px;
   text-align: right;
   pointer-events: none;
@@ -325,38 +329,12 @@
   text-shadow: 0 0 10px var(--neon-cyan);
 }
 
-.multiplayer-mode-toggle {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 16px;
-  pointer-events: auto;
-}
-
+/* Now lives in the settings panel (.theme-control's label+control layout,
+   .control-btn/.control-group for the buttons themselves — same pattern as
+   the 1 Hand/2 Hands toggle right above it) rather than floating in the
+   center pre-match overlay — only the show/hide toggle is still needed here. */
 .multiplayer-mode-toggle.hidden {
   display: none;
-}
-
-.mode-toggle-btn {
-  padding: 10px 22px;
-  background: rgba(0, 255, 255, 0.08);
-  border: 1.5px solid var(--neon-cyan);
-  border-radius: 999px;
-  color: var(--neon-cyan);
-  font-size: 0.9em;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.mode-toggle-btn:hover {
-  background: rgba(0, 255, 255, 0.16);
-}
-
-.mode-toggle-btn.active {
-  background: var(--neon-cyan);
-  color: #001014;
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
 }
 
 /* ---------- Results overlay (center) ---------- */
@@ -459,12 +437,11 @@
     font-size: 0.75em;
   }
 
-  /* Opponent panel had no mobile rule at all before — top:20/right:20 at
-     desktop size overlaps the progress bar and reads too large/cramped
-     next to the score HUD once hits/misses were added. Scale it down and
-     drop it below the progress bar, mirroring the score-hud treatment above. */
+  /* top:150px matches games/tennis/pong's own mobile clearance for the
+     shared camera preview, which shrinks to 120x90 at this breakpoint
+     (still anchored at top:58px, right:10px — see CameraService.js). */
   .opponent-panel {
-    top: 12px;
+    top: 150px;
     right: 12px;
   }
 
@@ -479,17 +456,6 @@
   .opponent-panel__hitmiss {
     gap: 6px;
     font-size: 0.68em;
-  }
-
-  .multiplayer-mode-toggle {
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .mode-toggle-btn {
-    padding: 10px 16px;
-    font-size: 0.8em;
-    min-height: 44px;
   }
 
   .results-overlay {

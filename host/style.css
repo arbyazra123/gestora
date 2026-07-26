@@ -23,90 +23,328 @@ body {
   min-height: 100vh;
 }
 
-/* ---------- Game hub ---------- */
+/* ---------- Game hub shell ---------- */
+/* height:100vh (not min-height) caps the panel to exactly one device
+   screen — it can't grow taller and force the whole page to scroll.
+   overflow:hidden backs that up: anything that would've overflowed is
+   handled by the internal scroll regions below (.games-list/.games-detail/
+   .rooms-tab__table-wrap) instead of spilling out of this box. This also
+   gives .dashboard-body's flex:1 (below) a definite height to stretch
+   into — a bare max-height alone wouldn't: percentage heights further down
+   the chain (.games-list/.games-detail's height:100%) only resolve against
+   a *definite* height, and max-height without an explicit height leaves
+   the box's own height "auto"/content-based, which would silently break
+   that stretch. */
 .game-hub {
-  padding: 40px 20px;
+  padding: 24px;
   max-width: 1400px;
   margin: 0 auto;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.hub-header {
-  text-align: center;
-  margin-bottom: 60px;
+/* ---------- Dashboard (host/docs/dashboard-design.md) ---------- */
+:root {
+  /* Single source of truth for the master/detail split — shared by the
+     topbar (search column vs. tabs/brand column) and the Games tab's body
+     (list column vs. detail column) below, so the search bar's width always
+     matches the game list's width exactly rather than two hardcoded values
+     that could drift apart. */
+  --dashboard-sidebar-width: minmax(240px, 320px);
 }
 
-.hub-header h1 {
-  font-size: 3em;
-  margin-bottom: 10px;
+.dashboard-topbar {
+  display: grid;
+  grid-template-columns: var(--dashboard-sidebar-width) 1fr;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(0, 255, 255, 0.2);
+  border-radius: 15px 15px 0 0;
+  border-bottom: none;
+  padding: 16px 20px;
+}
+
+/* Brand + online summary, left-aligned in the sidebar-width column (same
+   column the game list sits in below). */
+.dashboard-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dashboard-brand {
+  flex-shrink: 0;
+  font-size: 1.5em;
+  height: 1.5em;
+  font-weight: bold;
+  justify-content: center;
   background: linear-gradient(90deg, #00ffff, #ff00ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.subtitle {
-  font-size: 1.2em;
+/* Holds the tabs (centered within this column) and the search bar (pinned
+   to the far right) — position:relative so .dashboard-tabs below can center
+   itself against this column's own width, not the whole topbar's. */
+.dashboard-topbar__right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 40px;
+}
+
+.dashboard-tabs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 4px;
+}
+
+.dashboard-tab {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1em;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.dashboard-tab.active {
+  color: #00ffff;
+  background: rgba(0, 255, 255, 0.12);
+}
+
+.dashboard-search {
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  color: white;
+  padding: 10px 18px;
+  font-size: 0.95em;
+}
+
+.dashboard-search:focus {
+  outline: none;
+  border-color: rgba(0, 255, 255, 0.5);
+}
+
+.dashboard-search::placeholder {
+  color: #888;
+}
+
+.dashboard-body {
+  background: rgba(255, 255, 255, 0.02);
+  border: 2px solid rgba(0, 255, 255, 0.2);
+  border-radius: 0 0 15px 15px;
+  flex: 1;
+  min-height: 0; /* let this flex item shrink to its resolved flex size instead of its content's natural height, so height:100% below actually has something definite to resolve against */
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-online-summary {
+  /* flex-shrink: 0; */
+  font-size: 0.7em;
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+/* ---------- Games tab: master/detail library browser ---------- */
+.games-tab {
+  display: grid;
+  grid-template-columns: var(--dashboard-sidebar-width) 1fr;
+  grid-template-rows: 1fr; /* the single row explicitly fills this grid's own (flex-resolved) height */
+  flex: 1;
+  min-height: 0;
+}
+
+.games-list {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-y: auto;
+  height: 100%;
+  /* Grid items default to min-height:auto (= their content's natural
+     height), which silently overrides height:100% and stops overflow-y
+     from ever needing to activate — this is what actually lets it shrink
+     to the intended row height and scroll instead of growing past it. */
+  min-height: 0;
+}
+
+.games-list__row {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.games-list__row:hover {
+  background: rgba(0, 255, 255, 0.06);
+}
+
+.games-list__row--active {
+  background: rgba(0, 255, 255, 0.15);
+}
+
+.games-list__row--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.games-list__row h4 {
+  font-size: 1.1em;
+  margin-bottom: 4px;
+}
+
+.games-list__row p {
+  font-size: 0.85em;
   color: #aaa;
 }
 
-.games-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 30px;
-  padding: 20px;
+/* position:relative + height:100% (of the grid row .games-tab resolves via
+   its own flex-stretched height) turns this into the floating button's
+   positioning context — the button stays pinned to this panel's
+   bottom-right corner regardless of how far the inner .games-detail__scroll
+   content (now much longer, with How to Play/Rules) is scrolled. Matches
+   .games-list's own height so the two columns always read as the same
+   height, filling the device's actual viewport rather than a guessed vh. */
+.games-detail {
+  position: relative;
+  height: 100%;
+  min-height: 0; /* same grid-item min-height:auto gotcha as .games-list above */
 }
 
-.game-card {
-  background: rgba(247, 228, 228, 0.05);
-  border-radius: 15px;
-  overflow: hidden;
-  border: 2px solid rgba(0, 255, 255, 0.2);
-  transition: all 0.3s ease;
-  cursor: pointer;
+.games-detail__scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px;
+  /* Leaves room at the bottom so the last line of content never sits
+     underneath the floating button. */
+  padding-bottom: 90px;
 }
 
-.game-card:hover {
-  transform: translateY(-10px);
-  border-color: rgba(0, 255, 255, 0.6);
-  box-shadow: 0 10px 40px rgba(0, 255, 255, 0.3);
-}
-
-.game-thumbnail {
-  height: 200px;
+.games-detail__preview {
+  position: relative;
+  height: 300px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #1a1a3a, #2a2a4a);
+  margin-bottom: 20px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.thumbnail-placeholder {
-  font-size: 4em;
+.games-detail__preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.games-detail__preview-placeholder {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 3em;
   opacity: 0.5;
 }
 
-.game-info {
-  padding: 20px;
+.games-detail__preview-placeholder.visible {
+  display: flex;
 }
 
-.game-info h3 {
-  font-size: 1.5em;
+.games-detail__preview-placeholder span {
+  font-size: 0.3em;
+  opacity: 0.8;
+}
+
+.games-detail__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.games-detail__info h3 {
+  font-size: 1.6em;
   margin-bottom: 10px;
   color: #00ffff;
 }
 
-.game-description {
+.games-detail__description {
   color: #ccc;
-  margin-bottom: 15px;
   line-height: 1.6;
+  margin-bottom: 15px;
 }
 
-.game-meta {
+.games-detail__meta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding: 10px 0;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+  padding: 12px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.games-detail__genre {
+  color: #aaa;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.games-detail__section {
+  margin-bottom: 20px;
+}
+
+.games-detail__section h4 {
+  color: #00ffff;
+  font-size: 1em;
+  margin-bottom: 8px;
+}
+
+.games-detail__section ul {
+  list-style: disc;
+  padding-left: 20px;
+  color: #ccc;
+  line-height: 1.7;
+}
+
+.games-detail__section li {
+  margin-bottom: 4px;
+}
+
+/* Floating action button — pinned to the bottom-right of .games-detail
+   (see that rule's doc comment), overlapping the scrollable content rather
+   than sitting in normal document flow. */
+.games-detail__actions {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 5;
+}
+
+.play-button--floating {
+  width: auto;
+  padding: 14px 28px;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.3);
 }
 
 .game-players {
@@ -125,6 +363,71 @@ body {
   border-radius: 12px;
   font-size: 0.8em;
   color: #ff00ff;
+}
+
+/* ---------- Rooms tab: cross-game open-rooms table ---------- */
+/* Stretches to fill .dashboard-body too (see .games-tab's matching rule),
+   so the panel still reaches the device's full height on this tab even
+   when there are few/no open rooms to list. */
+.rooms-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rooms-tab__table-wrap {
+  flex: 1;
+  min-height: 0; /* same flex-item min-height:auto gotcha as .games-detail above */
+  overflow-x: auto; /* wide content scrolls in its own container, never the page */
+  overflow-y: auto;
+}
+
+.rooms-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rooms-table th {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ddd;
+  text-align: left;
+  padding: 14px 20px;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.rooms-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.rooms-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rooms-empty {
+  text-align: center;
+  color: #aaa;
+  padding: 40px !important;
+}
+
+.rooms-join-btn {
+  background: linear-gradient(90deg, #00ffff, #ff00ff);
+  border: none;
+  border-radius: 999px;
+  color: #001014;
+  font-weight: bold;
+  padding: 8px 18px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.rooms-badge--full {
+  color: #f87171;
+  font-weight: bold;
+  font-size: 0.85em;
 }
 
 /* ---------- Buttons & select ---------- */
@@ -184,21 +487,6 @@ body {
   box-shadow: 0 5px 20px rgba(0, 255, 255, 0.5);
 }
 
-.play-button--online {
-  margin-top: 8px;
-  background: linear-gradient(90deg, #ff00ff, #ffaa00);
-}
-
-.game-card--disabled {
-  opacity: 0.5;
-}
-
-.game-card--disabled:hover {
-  transform: none;
-  border-color: rgba(0, 255, 255, 0.2);
-  box-shadow: none;
-}
-
 .play-button--disabled {
   background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
@@ -210,7 +498,6 @@ body {
 }
 
 .games-empty {
-  grid-column: 1 / -1;
   text-align: center;
   color: #aaa;
   padding: 40px;
@@ -334,5 +621,401 @@ body {
     padding: 12px 18px;
     min-height: 44px;
     font-size: 0.95em;
+  }
+
+  .game-hub {
+    padding: 24px 12px;
+  }
+
+  /* The topbar's grid (search column vs. tabs/brand column) only makes
+     sense next to the two-column body it's aligned with — both collapse to
+     a single stacked column together on narrow screens. */
+  .dashboard-topbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .dashboard-topbar__left {
+    justify-content: center;
+  }
+
+  .dashboard-topbar__right {
+    position: static;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .dashboard-tabs {
+    position: static;
+    transform: none;
+    justify-content: center;
+  }
+
+  .dashboard-search {
+    max-width: none;
+  }
+
+  /* Master/detail collapses to a stack: a shorter, independently-scrolling
+     game list on top, full-width detail panel below — matches the "wide
+     content scrolls in its own container" rule used elsewhere (e.g. the
+     Rooms table), not the whole page. */
+  .games-tab {
+    grid-template-columns: 1fr;
+    /* Two stacked rows now (list, then detail), each independently capped
+       below rather than sharing the desktop's single stretched 1fr row —
+       auto-then-natural-size is simpler/safer than reasoning about implicit
+       grid row stretching once there's a second stacked row involved. */
+    grid-template-rows: auto 1fr;
+  }
+
+  .games-list {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    height: auto;
+    max-height: 240px;
+  }
+
+  .games-detail {
+    height: auto;
+    max-height: 60vh;
+  }
+
+  .games-detail__scroll {
+    padding: 16px;
+    padding-bottom: 80px;
+  }
+
+  .games-detail__preview {
+    height: 160px;
+  }
+
+  .games-detail__actions {
+    bottom: 14px;
+    right: 14px;
+  }
+
+  .play-button--floating {
+    padding: 12px 22px;
+    font-size: 1em;
+  }
+
+  .rooms-table th,
+  .rooms-table td {
+    padding: 10px 14px;
+    font-size: 0.9em;
+  }
+}
+
+/* ---------- Room List modal (host/src/ui/RoomListModal.js) ---------- */
+.room-list-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* above the back-button/camera-toggle (z-index:1000) */
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.room-list-modal {
+  background: rgba(20, 20, 30, 0.97);
+  border: 1.5px solid rgba(0, 255, 255, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  color: white;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.6);
+}
+
+.room-list-modal__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.room-list-modal__header h2 {
+  font-size: 1.3em;
+  flex: 1;
+  padding-right: 30px;
+}
+
+.room-list-online-summary {
+  font-size: 0.8em;
+  color: #4ade80;
+  width: 100%;
+}
+
+.room-list-close-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1.2em;
+  cursor: pointer;
+  padding: 4px 8px;
+  min-height: 32px;
+}
+
+.room-list-close-btn:hover {
+  color: white;
+}
+
+.room-list-modal__section {
+  margin-bottom: 20px;
+}
+
+.room-list-modal__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95em;
+  font-weight: bold;
+  color: #00ffff;
+  margin-bottom: 10px;
+}
+
+.room-list-refresh-btn {
+  background: none;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  color: #00ffff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1em;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.room-list-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.room-list-status {
+  color: #aaa;
+  font-size: 0.9em;
+  text-align: center;
+  padding: 12px;
+}
+
+.room-list-status--error {
+  color: #f87171;
+}
+
+.room-list-row {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.room-list-row__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 120px;
+}
+
+.room-list-row__name {
+  font-weight: bold;
+}
+
+.room-list-row__count {
+  font-size: 0.8em;
+  color: #aaa;
+}
+
+.room-list-row__password {
+  flex-basis: 120px;
+}
+
+.room-list-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  padding: 10px 12px;
+  font-size: 0.9em;
+  min-height: 40px;
+  flex: 1;
+  min-width: 0;
+}
+
+.room-list-input:focus {
+  outline: none;
+  border-color: rgba(0, 255, 255, 0.6);
+}
+
+.room-list-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.room-list-action-btn {
+  background: linear-gradient(90deg, #00ffff, #ff00ff);
+  border: none;
+  border-radius: 8px;
+  color: #001014;
+  font-weight: bold;
+  padding: 10px 18px;
+  cursor: pointer;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.room-list-action-btn:hover {
+  filter: brightness(1.1);
+}
+
+.room-list-error {
+  color: #f87171;
+  font-size: 0.85em;
+  margin-top: 6px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .room-list-modal {
+    padding: 18px;
+    max-height: 90vh;
+  }
+
+  .room-list-modal__header h2 {
+    font-size: 1.1em;
+  }
+
+  .room-list-input,
+  .room-list-action-btn {
+    font-size: 0.85em;
+  }
+}
+
+/* ---------- Play Mode modal (host/src/ui/PlayModeModal.js) ---------- */
+.play-mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.play-mode-modal {
+  background: rgba(20, 20, 30, 0.97);
+  border: 1.5px solid rgba(0, 255, 255, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  color: white;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.6);
+}
+
+.play-mode-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.play-mode-modal__header h2 {
+  font-size: 1.3em;
+}
+
+.play-mode-close-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1.2em;
+  cursor: pointer;
+  padding: 4px 8px;
+  min-height: 32px;
+}
+
+.play-mode-close-btn:hover {
+  color: white;
+}
+
+.play-mode-modal__options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.play-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.play-mode-option:hover {
+  background: rgba(0, 255, 255, 0.1);
+  border-color: rgba(0, 255, 255, 0.4);
+}
+
+.play-mode-option__icon {
+  font-size: 1.8em;
+  flex-shrink: 0;
+}
+
+.play-mode-option__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.play-mode-option__label {
+  font-weight: bold;
+  font-size: 1.05em;
+}
+
+.play-mode-option__desc {
+  font-size: 0.85em;
+  color: #aaa;
+}
+
+@media (max-width: 640px) {
+  .play-mode-modal {
+    padding: 18px;
+  }
+
+  .play-mode-option {
+    padding: 12px 14px;
+  }
+
+  .play-mode-option__icon {
+    font-size: 1.5em;
   }
 }

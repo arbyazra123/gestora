@@ -1,6 +1,6 @@
 # Host
 
-The platform shell. Loads Games dynamically via Module Federation and provides the shared Services every Game depends on. See [ADR-0002](../docs/adr/0002-mediapipe-single-active-detector-type.md) for the hard constraint behind several terms below.
+The platform shell. Loads Games dynamically via Module Federation and provides the shared Services every Game depends on. See [ADR-0002](../docs/adr/0002-mediapipe-single-active-detector-type.md) for the hard constraint behind several terms below. See [docs/dashboard-design.md](./docs/dashboard-design.md) for the Games/Rooms dashboard's UI design.
 
 ## Language
 

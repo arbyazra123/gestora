@@ -18,6 +18,12 @@ import { Client } from '@colyseus/sdk';
 const DEFAULT_SERVER_URL = import.meta.env.VITE_MULTIPLAYER_SERVER_URL
   || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:2567`;
 
+// The room-list/online-summary endpoints (server/src/index.js) are plain
+// HTTP, served on the same port as the WebSocket transport — derived from
+// the same URL rather than configured separately, so there's only one
+// place (VITE_MULTIPLAYER_SERVER_URL) to override for a non-default host.
+const DEFAULT_HTTP_URL = DEFAULT_SERVER_URL.replace(/^ws/, 'http');
+
 class MultiplayerService {
   constructor() {
     this.client = null;
@@ -32,6 +38,15 @@ class MultiplayerService {
     // Event handlers
     this.eventHandlers = new Map();
 
+    // Most recently emitted 'stateChange' payload, replayed immediately to
+    // any handler that subscribes via on('stateChange', ...) after the fact
+    // (see on() below) — necessary since the Room List flow (see
+    // host/src/ui/RoomListModal.js) now often creates/joins a room BEFORE
+    // the game that will use it has even loaded, so Colyseus's own "fires
+    // immediately with current state" behavior on room.onStateChange() can
+    // fire before this game has subscribed to anything at all.
+    this._lastState = null;
+
     this._roomUnsubscribers = [];
 
     // Most recent round-trip time, in ms, from Colyseus's own room.ping() —
@@ -45,7 +60,7 @@ class MultiplayerService {
 
   /**
    * Create the Colyseus client. This does not open a socket by itself —
-   * the actual handshake happens on joinRoom()/joinOrCreate().
+   * the actual handshake happens on createRoom()/joinRoomById()/quickMatch().
    */
   async connect(serverUrl = DEFAULT_SERVER_URL) {
     if (this.client) {
@@ -59,21 +74,24 @@ class MultiplayerService {
   }
 
   /**
-   * Join (or create, if none is waiting) a room for the given game.
-   * Colyseus's joinOrCreate auto-pairs the first two waiting clients —
-   * no manual room codes needed.
-   * @param {string} roomName - room/game identifier (matches the id
+   * Explicitly create a brand-new room for the given game — used by the
+   * Room List flow's "Create Room" action (see host/src/ui/RoomListModal.js)
+   * and, for games with their own pre-match settings UI (e.g. hand-sword's
+   * mode/song picker), by the game itself once those settings are chosen.
+   * Unlike the old joinOrCreate-based flow this replaced, this never
+   * silently pairs into someone else's room.
+   * @param {string} gameId - room/game identifier (matches the id
    *   registered via gameServer.define() on the server)
-   * @param {object} options - passed to the room's onCreate() the first
-   *   time it's created (e.g. locked match settings)
+   * @param {object} options - passed to the room's onCreate() (locked match
+   *   settings, optional password/name — see server/src/rooms/roomAuth.js)
    */
-  async joinRoom(roomName, options = {}) {
+  async createRoom(gameId, options = {}) {
     if (!this.client) {
       await this.connect();
     }
 
-    console.log(`[Multiplayer] Joining room: ${roomName}`);
-    this.room = await this.client.joinOrCreate(roomName, options);
+    console.log(`[Multiplayer] Creating room: ${gameId}`);
+    this.room = await this.client.create(gameId, options);
     this.playerId = this.room.sessionId;
     this._wireRoomEvents();
 
@@ -81,12 +99,96 @@ class MultiplayerService {
   }
 
   /**
-   * @deprecated joinOrCreate() unifies create+join — kept only so any
-   * existing caller of createRoom(gameId) doesn't hard-break.
+   * Join a specific existing room by its id — used by the Room List's
+   * "Join" button on a listed room, or its "Join by Code" field (the code
+   * IS the room's own Colyseus id, per the room-list design). Rejects if
+   * the room requires a password and options.password doesn't match (see
+   * each room's onAuth()).
    */
-  createRoom(gameId, options = {}) {
-    console.warn('[Multiplayer] createRoom() is deprecated; use joinRoom() — Colyseus auto-creates via joinOrCreate');
-    return this.joinRoom(gameId, options);
+  async joinRoomById(roomId, options = {}) {
+    if (!this.client) {
+      await this.connect();
+    }
+
+    console.log(`[Multiplayer] Joining room by id: ${roomId}`);
+    this.room = await this.client.joinById(roomId, options);
+    this.playerId = this.room.sessionId;
+    this._wireRoomEvents();
+
+    return this.room;
+  }
+
+  /**
+   * Open rooms for a given game, for the Room List's browsable list —
+   * passworded rooms are included (marked via hasPassword), only
+   * full/locked rooms are excluded server-side. Plain HTTP, not a Colyseus
+   * room join, so it never affects this.room/this.playerId.
+   */
+  async listRooms(gameId) {
+    const res = await fetch(`${DEFAULT_HTTP_URL}/rooms/${gameId}`);
+    if (!res.ok) throw new Error(`Failed to list rooms for ${gameId}`);
+    return res.json();
+  }
+
+  /**
+   * Platform-wide open-room/player summary, independent of any specific
+   * game — fetched eagerly by the hub as soon as it loads (see
+   * host/src/ui/GameHub.js) so a live count is already available before the
+   * player has picked a game.
+   */
+  async getOnlineSummary() {
+    const res = await fetch(`${DEFAULT_HTTP_URL}/online-summary`);
+    if (!res.ok) throw new Error('Failed to fetch online summary');
+    return res.json();
+  }
+
+  /**
+   * Every open room across every game (each entry tagged with `gameId`),
+   * for the dashboard's Rooms tab — deliberately includes full/locked rooms
+   * too (see server/src/index.js's /rooms handler), unlike listRooms()
+   * above which only lists what's actually still joinable for one game.
+   */
+  async listAllRooms() {
+    const res = await fetch(`${DEFAULT_HTTP_URL}/rooms`);
+    if (!res.ok) throw new Error('Failed to list rooms');
+    return res.json();
+  }
+
+  /**
+   * "Quick Match" — the fast, no-decisions entry point (see GameHub.js's
+   * ⚡ Quick Match button), distinct from the Room List's deliberate
+   * browse/create/join-by-code flow. Joins the first open, unpassworded
+   * room for this game if one exists, else creates a fresh one with no
+   * options — every room type already has sensible onCreate() defaults
+   * (e.g. hand-sword's mode/bpm/theme default to versus/120/synthwave), so
+   * this never needs any game-specific settings gathered first.
+   *
+   * Deliberately reimplemented on top of listRooms()/joinRoomById()/
+   * createRoom() rather than Colyseus's own joinOrCreate() — that would
+   * happily match into a passworded room (it doesn't know about our custom
+   * password concept) and then fail at onAuth() with no fallback.
+   */
+  async quickMatch(gameId) {
+    if (!this.client) {
+      await this.connect();
+    }
+
+    try {
+      const openRooms = await this.listRooms(gameId);
+      for (const room of openRooms.filter((r) => !r.hasPassword)) {
+        try {
+          return await this.joinRoomById(room.roomId);
+        } catch (error) {
+          // Room likely filled between listing and joining — try the next
+          // one instead of giving up entirely.
+          console.warn(`[Multiplayer] Quick match: room ${room.roomId} no longer joinable, trying next:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn('[Multiplayer] Quick match: failed to list rooms, falling back to create:', error);
+    }
+
+    return this.createRoom(gameId, {});
   }
 
   /**
@@ -102,6 +204,7 @@ class MultiplayerService {
     console.log('[Multiplayer] Leaving room');
     this.room.leave();
     this.room = null;
+    this._lastState = null;
   }
 
   /**
@@ -174,7 +277,10 @@ class MultiplayerService {
     const room = this.room;
 
     const onOpponentHand = (msg) => this.emit('opponentHand', msg);
-    const onStateChange = (state) => this.emit('stateChange', state);
+    const onStateChange = (state) => {
+      this._lastState = state;
+      this.emit('stateChange', state);
+    };
     const onLeave = (code) => {
       this.emit('disconnected', { code });
       this.room = null;
@@ -233,13 +339,20 @@ class MultiplayerService {
   }
 
   /**
-   * Event emitter pattern
+   * Event emitter pattern. For 'stateChange' specifically, immediately
+   * replays the last known state (if any) to the new handler — see
+   * this._lastState's doc comment in the constructor for why this matters
+   * now that a room is often already joined before anything subscribes.
    */
   on(event, handler) {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
     this.eventHandlers.get(event).push(handler);
+
+    if (event === 'stateChange' && this._lastState) {
+      handler(this._lastState);
+    }
   }
 
   off(event, handler) {

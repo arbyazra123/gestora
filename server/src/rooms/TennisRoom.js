@@ -3,6 +3,7 @@ import { schema, MapSchema } from '@colyseus/schema';
 import * as tennisPhysics from '../physics/tennisPhysics.js';
 import * as rules from '../physics/tennisRules.js';
 import { roomsActive, clientsConnected, tickDuration, tickOverruns, clientRTT } from '../metrics.js';
+import { setupLobbyMetadata, checkRoomPassword } from './roomAuth.js';
 
 const ROOM_LABEL = 'tennis';
 const TICK_BUDGET_S = 1 / 60; // matches Colyseus's default setSimulationInterval rate
@@ -65,7 +66,9 @@ const COURT_BOUNDS = {
 export class TennisRoom extends Room {
   maxClients = 2;
 
-  onCreate() {
+  onCreate(options = {}) {
+    setupLobbyMetadata(this, options);
+
     this.state = new MatchState({
       status: 'waiting',
       startAt: 0,
@@ -143,6 +146,10 @@ export class TennisRoom extends Room {
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
     roomsActive.inc({ room: ROOM_LABEL });
+  }
+
+  onAuth(client, options) {
+    return checkRoomPassword(this, options);
   }
 
   onJoin(client) {

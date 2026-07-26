@@ -1,40 +1,32 @@
 /**
  * Table Tennis Game UI Overlay
- * Displays score, game status, and controls
+ * Displays game status and controls. The point score itself lives in the
+ * 3D scene now (see score-display.js) rather than here — mirrors pong's
+ * approach of an in-scene score instead of a DOM overlay.
  */
 import '../style.css';
 
 let uiOverlay;
-let scoreDisplay;
 let gameScoreDisplay;
 let statusDisplay;
-let controlsDisplay;
 let fingerCountDisplay;
 let serveChallengeDisplay;
+let introOverlay;
+let infoButton;
 
 let isMultiplayerMode = false;
 let countdownIntervalId = null;
+let hasDismissedIntro = false;
+let onPlayCallback = null;
 
-export function setupUI(container) {
+export function setupUI(container, { onPlay } = {}) {
+  onPlayCallback = onPlay || null;
+  hasDismissedIntro = false;
+
   // Create UI overlay container
   uiOverlay = document.createElement('div');
   uiOverlay.id = 'table-tennis-ui';
   uiOverlay.className = 'tt-ui-overlay';
-
-  // Score display (top center)
-  scoreDisplay = document.createElement('div');
-  scoreDisplay.className = 'tt-score-panel';
-  scoreDisplay.innerHTML = `
-    <div class="tt-score-panel__side">
-      <div class="tt-score-panel__label">YOU</div>
-      <div id="player-score">0</div>
-    </div>
-    <div class="tt-score-panel__divider">:</div>
-    <div class="tt-score-panel__side">
-      <div id="bot-label" class="tt-score-panel__label">BOT</div>
-      <div id="bot-score">0</div>
-    </div>
-  `;
 
   // Game score (games won)
   gameScoreDisplay = document.createElement('div');
@@ -83,29 +75,42 @@ export function setupUI(container) {
     </div>
   `;
 
-  // Controls display (bottom)
-  controlsDisplay = document.createElement('div');
-  controlsDisplay.className = 'tt-controls-panel';
-  controlsDisplay.innerHTML = `
-    <div class="tt-controls-panel__title">
-      <strong>🏓 Motion Table Tennis</strong>
-    </div>
-    <div class="tt-controls-panel__hint">
-      Move your hand to control the paddle<br>
-      <span class="tt-controls-panel__small">
-        Press SPACE to start • 1/2/3 fingers to aim • 5 fingers to smash<br>
-        Show the finger-count digits in order to serve • First to 2 games wins
-      </span>
+  // One-time "How to Play" intro, shown full-screen at the start of every
+  // session and reopenable via infoButton — replaces the old permanent
+  // bottom banner, which ate play-area space for the whole match (worst on
+  // small/mobile screens). Its Play button also doubles as the touch
+  // equivalent of "Press SPACE to Start", since mobile has no keyboard.
+  introOverlay = document.createElement('div');
+  introOverlay.id = 'tt-intro-overlay';
+  introOverlay.className = 'tt-intro-overlay visible';
+  introOverlay.innerHTML = `
+    <div class="tt-intro-card">
+      <div class="tt-intro__title"><strong>🏓 Motion Table Tennis</strong></div>
+      <div class="tt-intro__hint">
+        Move your hand to control the paddle<br>
+        <span class="tt-intro__small">
+          1/2/3 fingers to aim • 5 fingers to smash<br>
+          Show the finger-count digits in order to serve • First to 2 games wins
+        </span>
+      </div>
+      <button id="tt-intro-play-btn" class="tt-intro-play-btn">▶ Tap to Play</button>
     </div>
   `;
 
+  // Small persistent button to reopen the how-to-play card mid-match.
+  infoButton = document.createElement('button');
+  infoButton.id = 'tt-info-button';
+  infoButton.className = 'tt-info-button';
+  infoButton.textContent = 'ⓘ';
+  infoButton.setAttribute('aria-label', 'How to play');
+
   // Append all elements
-  uiOverlay.appendChild(scoreDisplay);
   uiOverlay.appendChild(gameScoreDisplay);
   uiOverlay.appendChild(statusDisplay);
   uiOverlay.appendChild(fingerCountDisplay);
   uiOverlay.appendChild(serveChallengeDisplay);
-  uiOverlay.appendChild(controlsDisplay);
+  uiOverlay.appendChild(introOverlay);
+  uiOverlay.appendChild(infoButton);
 
   if (container) {
     container.appendChild(uiOverlay);
@@ -113,12 +118,39 @@ export function setupUI(container) {
     document.body.appendChild(uiOverlay);
   }
 
+  attachIntroListeners();
+
   console.log('[Table Tennis] UI initialized');
 }
 
-export function updateScore(playerScore, botScore) {
-  document.getElementById('player-score').textContent = playerScore;
-  document.getElementById('bot-score').textContent = botScore;
+function attachIntroListeners() {
+  document.getElementById('tt-intro-play-btn').addEventListener('click', handleIntroDismiss);
+  infoButton.addEventListener('click', () => showIntro());
+}
+
+/**
+ * First dismissal fires onPlayCallback (the real game-start trigger);
+ * reopening later via infoButton is purely informational, so it doesn't
+ * fire the callback again.
+ */
+function handleIntroDismiss() {
+  introOverlay.classList.remove('visible');
+  const firstDismiss = !hasDismissedIntro;
+  hasDismissedIntro = true;
+  updateIntroButtonLabel();
+  if (firstDismiss && onPlayCallback) {
+    onPlayCallback();
+  }
+}
+
+function updateIntroButtonLabel() {
+  const btn = document.getElementById('tt-intro-play-btn');
+  if (btn) btn.textContent = hasDismissedIntro ? 'Got it' : '▶ Tap to Play';
+}
+
+export function showIntro() {
+  updateIntroButtonLabel();
+  introOverlay.classList.add('visible');
 }
 
 export function updateGameScore(playerGames, botGames) {
@@ -160,14 +192,12 @@ export function hideStatus() {
 }
 
 /**
- * Switches the score panel's "BOT" label to "OPPONENT" and makes
- * showGameOver()/showPointWinner() refer to a real opponent instead of the
- * bot, without needing separate multiplayer-only copies of those functions.
+ * Makes showGameOver()/showPointWinner() (and opponentNoun() below) refer
+ * to a real opponent instead of the bot, without needing separate
+ * multiplayer-only copies of those functions.
  */
 export function setMultiplayerMode(enabled) {
   isMultiplayerMode = enabled;
-  const label = document.getElementById('bot-label');
-  if (label) label.textContent = enabled ? 'OPPONENT' : 'BOT';
 }
 
 function opponentNoun() {
@@ -252,14 +282,6 @@ export function hideServeChallenge() {
 export function showPointWinner(winner) {
   const message = winner === 'player' ? 'Point!' : `${opponentNoun()} Point`;
   showStatus(message, 1500);
-}
-
-export function hideControls() {
-  controlsDisplay.classList.add('hidden');
-}
-
-export function showControls() {
-  controlsDisplay.classList.remove('hidden');
 }
 
 export function cleanupUI() {

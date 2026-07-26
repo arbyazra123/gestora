@@ -60,7 +60,14 @@ class GameManager {
    * Load and start a game with manifest object
    * @param {string} gameId - Game identifier
    * @param {object} manifest - Game manifest object
-   * @param {object} options - Launch options (e.g. { multiplayer: true })
+   * @param {object} options - Launch options. `multiplayer: true` plus
+   *   either a room the player already joined via the Room List (see
+   *   host/src/ui/RoomListModal.js) before this call — nothing further
+   *   needed, the game just adopts multiplayerService.room directly — or
+   *   `pendingRoomOptions: { password, name }` when the player chose
+   *   "Create Room" for a game with its own pre-match settings (only
+   *   hand-sword right now); that game creates the room itself once those
+   *   settings are chosen, merging in pendingRoomOptions.
    */
   async loadGameWithManifest(gameId, manifest, options = {}) {
     const startTime = performance.now();
@@ -128,7 +135,10 @@ class GameManager {
           mediaPipe: mediaPipeService,
           camera: cameraService,
           multiplayer: multiplayerService,
-          launchOptions: { multiplayer: !!options.multiplayer }
+          launchOptions: {
+            multiplayer: !!options.multiplayer,
+            pendingRoomOptions: options.pendingRoomOptions || null
+          }
         }
       );
 

@@ -65,9 +65,20 @@ export default class HandSwordGame {
     this.wantsMultiplayer = !!services.launchOptions?.multiplayer;
     this.matchState = 'idle'; // idle | connecting | waiting | countdown | playing | ended
     this.selectedMultiplayerMode = 'versus'; // 'versus' | 'coop' — chosen pre-Ready, see ui.js's mode toggle
+    this.room = null;
     this._onStateChange = null;
     this._onOpponentHand = null;
     this._lastScoreSent = 0;
+
+    // Set only when the player chose "Create Room" in the hub's Room List
+    // (see host/src/ui/RoomListModal.js) — hand-sword still needs its own
+    // mode/song settings chosen in-game first (see ui.js's mode toggle), so
+    // handleReady() creates the room once those AND this are both ready,
+    // merging them together. Null when they instead joined an existing room
+    // from the list (services.multiplayer.room is already set in that case
+    // — see init(), which also skips showing the mode toggle then, since
+    // the room's mode is already locked in by whoever created it).
+    this.pendingRoomOptions = services.launchOptions?.pendingRoomOptions || null;
 
     console.log('[HandSword] Game instance created');
   }
@@ -134,10 +145,15 @@ export default class HandSwordGame {
         this.mediaPipe
       );
 
-      // Setup UI
+      // Setup UI. alreadyJoined means the player picked an existing room
+      // from the hub's Room List rather than "Create Room" — the mode
+      // toggle is hidden in that case since the room's mode is already
+      // locked in by whoever created it, not chosen here.
+      const alreadyJoined = this.wantsMultiplayer && !!this.multiplayer.room;
       const multiplayerOptions = this.wantsMultiplayer
         ? {
           wantsMultiplayer: true,
+          alreadyJoined,
           onReady: () => this.handleReady(),
           onModeChange: (mode) => { this.selectedMultiplayerMode = mode; }
         }
@@ -152,6 +168,21 @@ export default class HandSwordGame {
         this._onOpponentHand = (msg) => this.renderOpponentHand(msg.data);
         this.multiplayer.on('stateChange', this._onStateChange);
         this.multiplayer.on('opponentHand', this._onOpponentHand);
+
+        // Already joined via the hub's Room List before this game even
+        // loaded — adopt it directly; handleReady() below becomes a no-op
+        // for this case. MultiplayerService.on() above already replayed the
+        // room's current state synchronously, so handleMatchStateChange()
+        // has already run once by this point — but unlike the "Create Room"
+        // path (handleReady()), nothing else sets the "Waiting for
+        // opponent..." message for a joiner, so do it here explicitly
+        // (harmless if the room fills and jumps to countdown a moment
+        // later — handleMatchStateChange()'s countdown branch overwrites it).
+        if (alreadyJoined) {
+          this.room = this.multiplayer.room;
+          this.matchState = 'waiting';
+          this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
+        }
       }
 
       // Initialize health meter
@@ -262,6 +293,7 @@ export default class HandSwordGame {
       if (this._onStateChange) this.multiplayer.off('stateChange', this._onStateChange);
       if (this._onOpponentHand) this.multiplayer.off('opponentHand', this._onOpponentHand);
       this.multiplayer.leaveRoom();
+      this.room = null;
       this.matchState = 'idle';
     }
 
@@ -378,25 +410,31 @@ export default class HandSwordGame {
   /**
    * Called when the player clicks "Play" in multiplayer mode (their audio
    * context is already unlocked by this point — see ui.js's playBtn
-   * handler). Joins the match room; the server pairs the first two
-   * waiting clients and drives the countdown/start-epoch from there.
+   * handler). If a room was already joined via the hub's Room List (see
+   * init()) this is a no-op — state sync is already flowing. Otherwise the
+   * player chose "Create Room" there, and this creates it now with their
+   * chosen mode/song (see ui.js's mode toggle) plus whatever password/name
+   * they set in the Room List.
    */
   async handleReady() {
+    if (this.room) return;
+
     this.matchState = 'connecting';
     this.uiModule.showMultiplayerOverlay('Connecting...');
 
     try {
-      await this.multiplayer.connect();
-      await this.multiplayer.joinRoom('hand-sword', {
+      await this.multiplayer.createRoom('hand-sword', {
         bpm: getCurrentBPM(),
         theme: currentTheme,
-        mode: this.selectedMultiplayerMode
+        mode: this.selectedMultiplayerMode,
+        ...(this.pendingRoomOptions || {})
       });
+      this.room = this.multiplayer.room;
 
       this.matchState = 'waiting';
       this.uiModule.showMultiplayerOverlay('Waiting for opponent...');
     } catch (error) {
-      console.error('[HandSword] Failed to join multiplayer match:', error);
+      console.error('[HandSword] Failed to create multiplayer match:', error);
       this.uiModule.showMultiplayerOverlay('Connection failed');
     }
   }
