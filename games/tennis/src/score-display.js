@@ -89,8 +89,8 @@ export function createScoreDisplay(scene) {
   // z<0 is the "Near"/player side, z>0 is "Far"/bot — matches
   // scene.js's playerRacket/botRacket placement and physics.js's court
   // bounds convention.
-  playerSign = createSign(signX, -2);
-  botSign = createSign(signX, 1.2);
+  playerSign = createSign(signX, -1.5);
+  botSign = createSign(signX, 2);
   scene.add(botSign.mesh);
   scene.add(playerSign.mesh);
 }

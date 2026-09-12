@@ -2,6 +2,21 @@
 
 High-performance, modular game platform for hand-tracking powered games using Module Federation.
 
+## 🎥 Demo
+
+<table>
+<tr>
+<th>Hand Sword</th>
+<th>Pong</th>
+<th>Tennis</th>
+</tr>
+<tr>
+<td><video src="docs/media/hand_sword.mp4" controls width="250"></video></td>
+<td><video src="docs/media/pong.mp4" controls width="250"></video></td>
+<td><video src="docs/media/tennis.mp4" controls width="250"></video></td>
+</tr>
+</table>
+
 ## 🏗️ Architecture
 
 ```

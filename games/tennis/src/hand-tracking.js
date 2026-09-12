@@ -118,7 +118,7 @@ export function handleHandTrackingResults(results) {
   const direction = new THREE.Vector3(
     (wrist.x - indexFinger.x),
     (indexFinger.y + wrist.y),
-    - ((indexFinger.z * 3) - wrist.z)
+    1
   ).normalize();
 
   // Apply smoothing

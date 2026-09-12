@@ -123,7 +123,17 @@ function mapHandToSword(landmarks, swordGroup, blade, hilt, smoothedPosition, fr
 // [x,y,z] arrays, one entry per detected hand. No smoothing/gap-detection
 // is applied here — that's tuned for local 60fps tracking and isn't
 // needed for a purely cosmetic opponent indicator.
-const GHOST_WORLD_OFFSET_X = 15; // separates the ghost sword from the local play field
+//
+// No world-space offset here (there used to be a +15 one) — the camera
+// (see scene.js, ~(0,1,5) at 75° FOV) only ever shows roughly ±4 world
+// units of width, so a +15 offset rendered the ghost sword completely
+// outside the frustum on every client, every mode ("can't see partner's
+// sword at all", reported from real two-laptop testing regardless of
+// which hand/side either player used). computeHandTransform() below is
+// the exact same formula used for the local sword, so with no added
+// offset the ghost sword lands in the same shared coordinate space the
+// boxes live in — in coop specifically, that's what makes it appear right
+// where the partner's own side's boxes are, instead of nowhere at all.
 const ghostHandGroups = [];
 
 function toPoint([x, y, z]) {
@@ -169,7 +179,7 @@ export function renderGhostHand(scene, compressedHands) {
       toPoint(hand.p)
     );
 
-    group.position.set(targetX + GHOST_WORLD_OFFSET_X, targetY, targetZ);
+    group.position.set(targetX, targetY, targetZ);
     group.quaternion.copy(quaternion);
   });
 }

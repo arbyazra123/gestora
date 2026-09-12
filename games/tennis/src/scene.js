@@ -39,7 +39,7 @@ export function initScene(container) {
   // and SWING_DIRECTION_X compensate for — verified via direct camera
   // projection math, not by eye, since this specific class of bug (feels
   // mirrored/backwards) can't be caught by reading the code alone.
-  camera.position.set(0, 3, -6);
+  camera.position.set(0, 5, -7);
   camera.lookAt(0, 0.5, 0);
 
   // Create renderer

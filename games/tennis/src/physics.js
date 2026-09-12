@@ -32,7 +32,7 @@ const SMASH_BASE_POWER = 14; // vs. a normal hit's 9 — a smash is meaningfully
 // lowered from that after real playtesting reported the ball moving too
 // fast to comfortably react to. games/tennis/src/index.js's MIN/MAX_SERVE_POWER
 // still define the *pre-scale* serve-challenge power range unchanged.
-export const BALL_SPEED_SCALE = 0.65;
+export const BALL_SPEED_SCALE = .8;
 
 // Ball state
 export const ballState = {
