@@ -11,11 +11,13 @@ High-performance, modular game platform for hand-tracking powered games using Mo
 <th>Tennis</th>
 </tr>
 <tr>
-<td><video src="docs/media/hand_sword.mp4" controls width="250"></video></td>
-<td><video src="docs/media/pong.mp4" controls width="250"></video></td>
-<td><video src="docs/media/tennis.mp4" controls width="250"></video></td>
+<td><img src="docs/media/hand_sword.gif" width="250" alt="Hand Sword demo"></td>
+<td><img src="docs/media/pong.gif" width="250" alt="Pong demo"></td>
+<td><img src="docs/media/tennis.gif" width="250" alt="Tennis demo"></td>
 </tr>
 </table>
+
+> 🚧 **Status: actively in development, but playable.** All 3 games are up and running. Multiplayer works but is still rough around the edges (sync/latency issues expected). More games are on the way — expect breaking changes as the platform evolves.
 
 ## 🏗️ Architecture
 
